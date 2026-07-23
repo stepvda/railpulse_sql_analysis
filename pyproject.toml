@@ -67,6 +67,16 @@ dashboard = [
     "pandas>=2.2,<3",
     "altair>=5.3,<6",
 ]
+# The SQL Chat (text-to-SQL) page. Kept separate from `dashboard` on purpose:
+# torch + transformers pull in ~2 GB, and the plain dashboard does not need
+# them — the SQL Chat page degrades gracefully to an install prompt when they
+# are absent. A Sprint-4 preview; see docs/decisions.md ADR-14.
+chat = [
+    "railpulse[dashboard]",
+    "torch>=2.0,<3",
+    "transformers>=4.40,<5",
+    "accelerate>=0.28,<2",
+]
 # Drives the Belgian Mobility developer portal to create the API subscription.
 portal = [
     "playwright>=1.44,<2",

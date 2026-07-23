@@ -12,6 +12,11 @@ streamlit>=1.36,<2
 pandas>=2.2,<3
 altair>=5.3,<6
 
+# The SQL Chat (text-to-SQL) page is NOT installed by this file — its ML stack
+# (torch + transformers, ~2 GB) lives in requirements-chat.txt so the plain
+# dashboard stays lightweight. Install it only if you want SQL Chat:
+#   pip install -r requirements-chat.txt      (or: pip install -e ".[chat]")
+
 # Drives the Belgian Mobility developer portal in a headless browser to create
 # the API subscription (scripts/setup_api_key.py).
 playwright>=1.44,<2

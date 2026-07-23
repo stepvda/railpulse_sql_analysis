@@ -201,18 +201,20 @@ def run_index_suite(conn: sqlite3.Connection, runs: int) -> None:
         plan_with = explain(with_conn, case.sql)
         with_conn.close()
 
+        # DROP then restore inside try/finally: a Ctrl-C or an OperationalError
+        # during the un-indexed timing must NOT leave the database missing an
+        # index that every other part of the project depends on. The finally
+        # runs the idempotent 04_indexes.sql even on interrupt.
         conn.execute(f"DROP INDEX IF EXISTS {case.index}")
         conn.commit()
-
-        without_conn = fresh()
-        without_index = time_query(without_conn, case.sql, runs)
-        plan_without = explain(without_conn, case.sql)
-        without_conn.close()
-
-        # Restore immediately, so a crash mid-suite cannot leave the database
-        # missing an index the rest of the project depends on.
-        run_sql_file(conn, config.SQL_DIR / "04_indexes.sql", atomic=False)
-        conn.commit()
+        try:
+            without_conn = fresh()
+            without_index = time_query(without_conn, case.sql, runs)
+            plan_without = explain(without_conn, case.sql)
+            without_conn.close()
+        finally:
+            run_sql_file(conn, config.SQL_DIR / "04_indexes.sql", atomic=False)
+            conn.commit()
 
         results.append((case.label, with_index, without_index,
                         plan_with, plan_without))

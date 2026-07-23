@@ -104,8 +104,19 @@ def _stream_rows(
     Missing columns become ``None`` (the file simply does not carry that
     optional GTFS field). Extra columns are reported once and ignored — the
     staging schema, not the feed, defines what we store.
+
+    A row whose *field count* does not match the header is structurally broken,
+    not merely dirty: its values are misaligned against the column names, so
+    loading it would silently write the wrong value into the wrong column. Those
+    are counted and reported (never padded silently), so a malformed feed is
+    visible rather than quietly corrupting the staging table. ``restkey`` and
+    ``restval`` are the sentinels that let a plain ``csv.DictReader`` surface the
+    mismatch at all — without them a short row is silently None-padded and a long
+    row silently drops its surplus.
     """
-    reader = csv.DictReader(handle)
+    _EXTRA = "__railpulse_extra_fields__"
+    _MISSING = "__railpulse_missing_field__"
+    reader = csv.DictReader(handle, restkey=_EXTRA, restval=_MISSING)
     header = reader.fieldnames or []
 
     # DictReader keeps the BOM on the first field name if one is present.
@@ -123,9 +134,24 @@ def _stream_rows(
         print(f"    note: {filename} omits optional column(s), stored NULL: "
               f"{', '.join(absent)}")
 
+    malformed = 0
     # line 1 is the header, so the first data row is physical line 2
     for line_no, row in enumerate(reader, start=2):
-        yield (line_no, *(row.get(column) for column in columns))
+        if _EXTRA in row or _MISSING in row.values():
+            malformed += 1
+            if malformed <= 3:
+                kind = "extra" if _EXTRA in row else "missing"
+                print(f"    warning: {filename} line {line_no} has a "
+                      f"{kind} field vs the header; loaded best-effort")
+        # row.get() still returns the best-effort aligned value; a missing field
+        # comes back as the _MISSING sentinel, which we normalise to None so the
+        # staging column holds NULL rather than a marker string.
+        yield (line_no, *(None if row.get(c) == _MISSING else row.get(c)
+                          for c in columns))
+
+    if malformed:
+        print(f"    note: {filename} had {malformed:,} row(s) whose field count "
+              f"did not match the header (see warnings above)")
 
 
 def load_zip_into_staging(

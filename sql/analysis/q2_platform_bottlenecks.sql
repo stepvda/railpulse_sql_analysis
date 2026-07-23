@@ -140,12 +140,16 @@ ORDER BY h.platform_code, h.departure_hour;
 --   an operations planner actually acts on — how many trains use it in that
 --   hour on a typical operating day.
 --
---   Getting that last figure right needs care. The timetable-row count in the
---   busiest hour is a total across the whole 358-day feed window, so dividing
---   it by 60 would produce a "trains per minute" figure that is off by three
---   orders of magnitude. The honest per-day figure is the ANNUALISED count for
---   that hour divided by the number of dates in the feed, which is what
---   trains_per_day_in_peak_hour computes.
+--   The busiest hour is chosen by ANNUALISED departures, not raw timetable
+--   rows. This file's own header argues that raw rows mislead (they weight a
+--   seasonal variant equally with a daily service); picking the peak hour by
+--   raw rows here would contradict that and could name an hour that is busy in
+--   the timetable file but not on the platform. The raw count is still shown as
+--   a column so the two can be compared.
+--
+--   trains_per_day_in_peak_hour is the annualised count for that hour divided
+--   by the number of dates in the feed — the honest per-day figure. (Dividing
+--   the raw feed-wide count by 60 would be wrong by three orders of magnitude.)
 WITH hourly AS (
     SELECT
         d.platform_code,
@@ -165,18 +169,18 @@ feed_days AS (
 ranked AS (
     SELECT
         platform_code, departure_hour, timetabled_calls, annual_departures,
-        SUM(timetabled_calls) OVER (PARTITION BY platform_code) AS platform_total,
+        SUM(annual_departures) OVER (PARTITION BY platform_code) AS platform_annual_total,
         ROW_NUMBER() OVER (PARTITION BY platform_code
-                           ORDER BY timetabled_calls DESC) AS hour_rank
+                           ORDER BY annual_departures DESC) AS hour_rank
     FROM hourly
 )
 SELECT
     'Platform ' || r.platform_code AS platform,
     printf('%02d:00', r.departure_hour) AS busiest_hour,
-    r.timetabled_calls AS timetabled_calls_in_busiest_hour,
-    r.platform_total   AS timetabled_calls_all_day,
-    ROUND(100.0 * r.timetabled_calls / r.platform_total, 1) AS pct_of_platform_day,
     r.annual_departures AS annual_departures_in_busiest_hour,
+    ROUND(100.0 * r.annual_departures / r.platform_annual_total, 1)
+        AS pct_of_platform_day,
+    r.timetabled_calls AS timetabled_calls_in_busiest_hour,
     ROUND(1.0 * r.annual_departures / f.dates_in_feed, 1)
         AS trains_per_day_in_peak_hour,
     ROUND(60.0 / NULLIF(1.0 * r.annual_departures / f.dates_in_feed, 0), 1)
@@ -184,7 +188,7 @@ SELECT
 FROM ranked r
 CROSS JOIN feed_days f
 WHERE r.hour_rank = 1
-ORDER BY r.timetabled_calls DESC;
+ORDER BY r.annual_departures DESC;
 
 
 -- @label: q2_hub_comparison

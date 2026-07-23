@@ -1,0 +1,4 @@
+frequency_class,services,trips,pct_of_trips,trip_operating_days,pct_of_annual_service
+High Frequency,6588,23525,17.45,848309,67.52
+Medium Frequency,6705,57825,42.89,324092,25.79
+Low Frequency/Special,3995,53459,39.66,84069,6.69

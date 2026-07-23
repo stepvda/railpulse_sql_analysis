@@ -2,7 +2,7 @@
 
 Interview-prep notes for the *RailPulse: Belgian Transit SQL Analysis* challenge
 (Sprint 1). Every claim here is checked against the database this repository
-actually builds — `data/railpulse.db`, about 1.55 GB on disk (4 096-byte pages),
+actually builds — `data/railpulse.db`, roughly 1 GB on disk (it varies with how much real-time data has accumulated; the static core alone is ~1 GB after the build's VACUUM),
 SQLite 3.51.0, built from the SNCB/NMBS GTFS Static feed `nmbssncb` version
 2026-07-20 covering 2025-12-20 to 2026-12-12. The exact byte count moves with the
 WAL checkpoint state, so it is quoted to three significant figures and no more.
@@ -133,6 +133,12 @@ optimised for a different physical access pattern.
 |---|---|---|---|
 | **Row-store OLTP** | Many small reads/writes touching whole rows | PostgreSQL, MySQL, SQLite | The Sprint-1 core model, and Sprint 2's Azure PostgreSQL |
 | **Column-store / OLAP** | Aggregating a few columns over hundreds of millions of rows | DuckDB, ClickHouse, BigQuery | `SUM(operating_days)` over the 2.2 M-row fact table; the Power BI model in Sprint 3 |
+
+*(OLTP = **O**n**L**ine **T**ransaction **P**rocessing — lots of small,
+concurrent reads and writes, e.g. booking a seat. OLAP = **O**n**L**ine
+**A**nalytical **P**rocessing — a few big aggregations over huge tables, e.g.
+this project's queries. A row-store keeps each row's columns together on disk,
+which suits OLTP; a column-store keeps each column together, which suits OLAP.)*
 | **Time-series** | Append-only, timestamp-ordered, windowed aggregation, retention policies | TimescaleDB, InfluxDB | `rt_stop_time_update` once the poller has been running for months |
 | **Graph** | Traversal — "shortest path", "N hops from here" | Neo4j, Memgraph | Journey planning over `transfer` + `stop_time`; SQL needs a recursive CTE for this and it is painful |
 | **Document** | Records whose shape varies per record | MongoDB, CouchDB | Landing raw GTFS-RT JSON before parsing |
@@ -145,7 +151,7 @@ The distinction that matters is not SQL-vs-NoSQL but *server-vs-embedded*:
 - There is no server process. The library is linked into your program and reads
   and writes the database file directly. `src/railpulse/db.py` opening a
   connection is a `fopen`, not a network handshake.
-- The whole database is one file. `data/railpulse.db` is 1.55 GB and can be
+- The whole database is one file. `data/railpulse.db` is roughly 1 GB and can be
   copied, checksummed, or emailed. There is no `pg_dump`.
 - Configuration is zero. There are no users, roles, ports or `GRANT`s — which
   also means there is no server-side access control at all. File permissions are
@@ -629,9 +635,22 @@ Plus `service_date.day_of_week` (from `service_date`) and
 `platform.has_platform_code` (from `platform_code IS NOT NULL`).
 
 Strictly, every one of these is redundant: the value is a pure function of
-another column in the same row, so it is a transitive dependency and a 3NF
-violation. **It was done on purpose, for SARGability** (§5.3): a value computed
-inside a `WHERE` or `GROUP BY` cannot be indexed, whereas a stored column can.
+another column in the same row. **They were stored on purpose, for
+SARGability** (§5.3): a value computed inside a `WHERE` or `GROUP BY` cannot be
+indexed, whereas a stored column can.
+
+Be precise about *which* normal form each one breaks, because the two are not
+the same and an interviewer may probe it:
+
+- Columns derived from a **non-key** column are **3NF** violations (a transitive
+  dependency: `stop_id → departure_time → departure_secs`). That is
+  `departure_secs`, `departure_hour`, `is_boardable`, `has_platform_code`.
+- `service_date.day_of_week` is different. `service_date`'s primary key is the
+  **composite** `(service_id, service_date)`, and `day_of_week` depends on
+  `service_date` — *part* of that key, not a non-key column. A dependency on
+  part of a composite key is a **partial** dependency, which is a **2NF**
+  violation, one normal form earlier than the others. Same decision, same
+  justification; different rule broken, and worth naming correctly.
 
 The cost, stated plainly:
 
@@ -646,15 +665,19 @@ The cost, stated plainly:
 
 The benefit, measured:
 
-| Query over 2 165 507 rows | Wall (median of 3) | CPU |
+| Query over 2 165 507 rows | Wall (illustrative) | CPU |
 |---|---|---|
-| `GROUP BY departure_hour` (materialised) | **0.122 s** | 0.085 s |
-| `GROUP BY CAST(substr(departure_time,1,2) AS INTEGER) % 24` (computed) | **16.5 s** | 0.694 s |
+| `GROUP BY departure_hour` (materialised) | **~0.1 s** | ~0.09 s |
+| `GROUP BY CAST(substr(departure_time,1,2) AS INTEGER) % 24` (computed) | **~9 s warm, ~16 s cold** | ~0.7 s |
 
-Both return the same 24 rows. The **8×** CPU gap is the per-row function calls;
-the **135×** wall-clock gap is I/O, because the materialised form is answered
-entirely from a 145 MiB covering index and never opens the 262 MiB table at all.
-That distinction is the real lesson, and §5.2 unpacks it.
+Both return the same 24 rows. Read the **CPU** column first, because it is the
+stable one: the computed form burns ~8× the CPU, which is the per-row function
+calls and does not depend on cache state. The **wall-clock** gap is much larger
+(~100× warm, more when the 262 MiB table is cold) because the materialised form
+is answered entirely from a covering index and never opens the table at all —
+but that figure swings with page-cache state, so treat the ~8× CPU ratio as the
+hard number and the wall-clock ratio as "one to two orders of magnitude". That
+distinction is the real lesson, and §5.2 unpacks it.
 
 **How to say this in an interview:** "3NF is the default and I can point at
 where I enforced it. I broke it in exactly one place, for a measured reason, and
@@ -667,9 +690,20 @@ I isolated the risk by making those columns write-only from the transform."
 | | Primary Key | Unique Key | Foreign Key |
 |---|---|---|---|
 | **Asserts** | "This identifies the row" | "No two rows share this value" | "This value exists over there" |
-| **NULLs** | Never | Allowed, and **each NULL is distinct**, so many are permitted | Allowed (means "no parent") |
+| **NULLs** | Never *by the standard* — but see the SQLite caveat below | Allowed, and **each NULL is distinct**, so many are permitted | Allowed (means "no parent") |
 | **Per table** | Exactly one | Any number | Any number |
 | **Chosen for** | Stability; other tables reference it | Business rules that must not be violated | Referential integrity |
+
+> ⚠️ **A SQLite trap the interviewer may be testing.** "A primary key is never
+> NULL" is true in the SQL standard and in PostgreSQL, but **SQLite does not
+> enforce it** for an ordinary rowid table — a `TEXT PRIMARY KEY` column will
+> happily accept multiple NULL rows (verified: two NULLs insert into a
+> `CREATE TABLE t(k TEXT PRIMARY KEY)` without error). The exceptions are an
+> `INTEGER PRIMARY KEY` (which aliases the rowid and cannot be NULL) and any
+> `WITHOUT ROWID` table (where the PK is genuinely NOT NULL). This is a
+> long-standing documented SQLite quirk, not a bug. It is why this project
+> declares its key columns `NOT NULL` explicitly where it matters, rather than
+> trusting `PRIMARY KEY` to imply it — see §2.4's note on the schema.
 
 The subtlety worth knowing: a table can have several *candidate* keys; the one
 promoted to primary is the one other tables will reference, and it should be the
@@ -1140,11 +1174,20 @@ image: a commit is acknowledged only once the WAL write has reached storage.
    is heavily commented. **Atomicity is not something you get by writing `BEGIN`;
    it is something you can lose by using the wrong API.**
 2. **`synchronous = NORMAL`, and `OFF` during bulk load** — a deliberate,
-   documented weakening of **D**. Durability is what you can afford to trade when
-   the data is rebuildable: a power cut during a build costs a `make build`, not
-   customer data. Note precisely what is *not* traded: atomicity and consistency
-   are still absolute. This is the right shape for an analytical store and the
-   wrong shape for a payments ledger.
+   documented weakening. Be precise about what `OFF` actually risks, because it
+   is more than durability. With `synchronous = OFF` SQLite does not wait for
+   the OS to flush to disk before moving on, so a power cut or OS crash
+   mid-write can leave the database file **corrupt** — not merely missing the
+   last transaction (that would be a pure durability loss) but structurally
+   broken, which takes **atomicity** down with it. The SQLite documentation says
+   this plainly. So the honest statement is: `OFF` trades durability *and* the
+   crash-safety of atomicity, and it is acceptable here for exactly one reason —
+   the store is **fully rebuildable from the feed**, so the worst case is
+   `make build`, not corrupted customer data. During normal operation the
+   connection runs at `NORMAL` (safe against application crashes, exposed only to
+   an OS/power failure), and `OFF` is scoped to the bulk load alone. This is the
+   right shape for a disposable analytical store and catastrophically wrong for a
+   payments ledger.
 
 **Where the 'C' shows up as a design choice.** DQ-01 to DQ-09 in
 `03_transform.sql` are consistency rules the engine cannot express. Rather than
@@ -1612,7 +1655,18 @@ The rule in one line: **do not wrap the column in anything.**
 | `WHERE secs / 3600 = 17` | `WHERE secs >= 61200 AND secs < 64800` |
 | `WHERE name LIKE '%Central'` | leading wildcard is unfixable; needs FTS or a reversed-string index |
 | `WHERE CAST(id AS TEXT) = '42'` | `WHERE id = 42` |
-| `WHERE platform_code IS NOT NULL` | `WHERE has_platform_code = 1` (this project's choice) |
+
+> **One honest correction, because getting SARGability right is the whole
+> point.** `WHERE platform_code IS NOT NULL` **is** SARGable — SQLite answers it
+> with a range seek (`SEARCH ... USING INDEX (platform_code>?)`), because the
+> column is not wrapped in a function. So this project's `has_platform_code`
+> flag is *not* a SARGability fix, and it would be wrong to file it above. Its
+> real justification is different and narrower: it is a small-cardinality
+> integer that composes cleanly into the *front* of a composite covering index
+> (`ix_platform_station (station_id, has_platform_code, platform_code)`), which a
+> nullable TEXT column being range-scanned does not do as tidily. Same column,
+> honest reason. If you only need "is it null?", `IS NOT NULL` on an indexed
+> column is already fine.
 
 ### Why `WHERE strftime('%Y', scheduled_time) = '2026'` destroys performance
 
@@ -1693,10 +1747,10 @@ QUERY PLAN
 `--USE TEMP B-TREE FOR GROUP BY
 ```
 
-| Form | Plan | Wall (median of 3) | CPU |
+| Form | Plan | Wall (illustrative) | CPU |
 |---|---|---|---|
-| `GROUP BY departure_hour` | `SEARCH ... COVERING INDEX`, no sort | **0.122 s** | 0.085 s |
-| `GROUP BY substr(departure_time,…)` | `SEARCH ... INDEX` + `USE TEMP B-TREE` | 16.5 s | 0.694 s |
+| `GROUP BY departure_hour` | `SEARCH ... COVERING INDEX`, no sort | **~0.1 s** | ~0.09 s |
+| `GROUP BY substr(departure_time,…)` | `SEARCH ... INDEX` + `USE TEMP B-TREE` | ~9 s warm, ~16 s cold | ~0.7 s |
 
 Read the two plans carefully, because the difference is subtler than
 "index vs no index" and being able to explain it is what separates a good answer
@@ -2079,22 +2133,26 @@ arrive in primary-key order already:
 
 # Appendix A: every measurement in one table
 
-Reproduce any of these with
-`sqlite3 -readonly data/railpulse.db` and `.timer on`. SQLite 3.51.0, macOS on
-Apple Silicon, median of three warm runs, machine under concurrent load — so
-treat ratios as the signal, not absolute values.
+**These are one machine's numbers on one run, and they drift 2-3x between runs.
+Treat every ratio as the signal and every absolute time as illustrative.** The
+authoritative, re-runnable source is `railpulse benchmark --with-index-drops`
+(for the index/SARGability rows) and the harness in §1.3 (for the concurrency
+rows); this table is a snapshot, not an independent claim, and where a number
+here once disagreed with the section that generated it, the section wins.
+Reproduce any single-query row with `sqlite3 -readonly data/railpulse.db` and
+`.timer on`. SQLite 3.51.0, macOS on Apple Silicon, warm runs unless noted.
 
 | § | Comparison | Slow form | Fast form | Ratio | Cause |
 |---|---|---|---|---|---|
-| 2.4 / 5.2 | FK lookup on `stop_time.stop_id` | `SCAN` 1.838 s | `SEARCH` 0.001 s | ~1 800× | Foreign keys do not create indexes |
-| 6.1 / 6.2 | "Last day per service", 3 rows out | derived table 0.784 s | correlated scalar 0.001 s | ~780× | 4.7 M-row scan + runtime index vs 3 seeks |
-| 2.3 / 5.3 | `GROUP BY` hour over 2.17 M calls | computed 16.5 s (0.694 s CPU) | materialised 0.122 s (0.085 s CPU) | 135× wall, 8× CPU | Covering index + no sort vs table fetch + sort |
-| 5.3 | Year filter on 4.7 M `service_date` | `strftime` 1.157 s | range 0.192 s | 6× | SARGable rewrite |
-| 6.3 | Origin call per trip, via `v_departure` | correlated 26.61 s | window 7.87 s | 3.4× | Six-table join re-run per trip |
-| 6.3 | Origin call per trip, via `stop_time` | window 21.3 s | correlated 14.2 s | 1.5× | PK is a perfect index for `MIN` |
-| 2.4 | `service_date` storage layout | rowid 378 MiB | `WITHOUT ROWID` 189 MiB | 2.0× | PK stored once instead of twice |
-| 1.3 | 10 000 inserts, 50 processes vs 1 | 50 procs: 1.75 s | 1 proc: 0.88 s | 2.0× *slower* | Writes fully serialised; parallelism is negative |
-| 1.3 | 10 000 inserts, 50 processes, `busy_timeout = 0` | rollback: 9 770 lost | WAL: 9 050 lost | — | WAL fixes readers, not writers |
+| 2.4 / 5.2 | FK lookup on `stop_time.stop_id` | `SCAN` ~1.8 s | `SEARCH` ~0.001 s | ~1 500× | Foreign keys do not create indexes |
+| 6.1 / 6.2 | "Last day per service", 3 rows out | derived table ~0.8 s | correlated scalar ~0.001 s | ~780× | 4.7 M-row scan + runtime index vs 3 seeks |
+| 2.3 / 5.3 | `GROUP BY` hour over 2.17 M calls | computed ~9 s (cold ~16 s) | materialised ~0.1 s | ~100× wall | Covering index + no sort vs table fetch + sort |
+| 5.3 | Year filter on 4.7 M `service_date` | `strftime` ~1.2 s | range ~0.2 s | ~6× | SARGable rewrite |
+| 6.3 | Origin call per trip, via `v_departure` | correlated ~27 s | window ~8 s | ~3.4× | Six-table join re-run per trip |
+| 6.3 | Origin call per trip, via `stop_time` | window ~21 s | correlated ~14 s | ~1.5× | PK is a perfect index for `MIN` |
+| 2.4 | `service_date` storage layout (est.) | rowid ~380 MiB | `WITHOUT ROWID` ~190 MiB | ~2× | PK stored once instead of twice |
+| 1.3 | 10 000 inserts, 50 processes vs 1 | 50 procs: ~1.4 s | 1 proc: ~1.3 s | *slower*, no gain | Writes fully serialised; parallelism is negative |
+| 1.3 | 10 000 inserts, `busy_timeout = 0` | rollback: ~96 % lost | WAL: ~84 % lost | — | WAL fixes readers, not writers |
 
 # Appendix B: the twelve numbers worth memorising
 

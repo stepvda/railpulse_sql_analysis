@@ -129,6 +129,17 @@ ORDER BY station_name, departure_hour;
 --   This is a presentation device, not a physical measurement, and it is
 --   labelled as such: the components are published alongside so a reader can
 --   disagree with the weighting and recompute.
+--
+--   ⚠ ONE COMPONENT IS ALMOST ALL NOISE, ON PURPOSE-VISIBLY. Peak concentration
+--   barely varies across these five hubs — they all sit between 6.0 % and
+--   6.4 %, a 0.36-point spread. Min-max normalisation stretches that trivial
+--   gap to a full 0-100 range, so smoothness_score looks decisive when the
+--   underlying difference is nothing. Read the raw peak_concentration_pct column
+--   (all ~6 %) and you can see it: the composite is really driven by
+--   connectivity and headroom, which have real spread. This is exactly why the
+--   three components ship next to the score instead of hidden inside it — a
+--   normalised score with no spread underneath it is a rank of noise, and the
+--   reader is given what they need to catch that.
 WITH base AS (
     SELECT
         d.station_name,

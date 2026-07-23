@@ -25,7 +25,7 @@ ANALYSIS_SQL  := $(wildcard sql/analysis/*.sql)
 SQL_FILES     := $(SCHEMA_SQL) $(ANALYSIS_SQL)
 
 .DEFAULT_GOAL := help
-.PHONY: help setup setup-dashboard setup-dev all fetch build rebuild verify analyse poll benchmark \
+.PHONY: help setup setup-dashboard setup-chat setup-dev all fetch build rebuild verify analyse poll benchmark \
         dashboard info clean clean-db clean-output test lint sqlfmt-check \
         api-key
 
@@ -47,9 +47,12 @@ setup:  ## install the pipeline and the `railpulse` command
 	# This makes the bare `railpulse <command>` form in the docs actually work.
 	$(PYTHON) -m pip install -e .
 
-setup-dashboard:  ## install the optional dashboard + browser-automation extras
+setup-dashboard:  ## install the dashboard + browser-automation extras (no ML)
 	$(PYTHON) -m pip install -e ".[dashboard,portal]"
 	$(PYTHON) -m playwright install chromium
+
+setup-chat:  ## install the SQL Chat text-to-SQL stack (~2 GB: torch + transformers)
+	$(PYTHON) -m pip install -e ".[chat]"
 
 setup-dev:  ## install everything, including pytest
 	$(PYTHON) -m pip install -e ".[dashboard,portal,dev]"

@@ -48,14 +48,21 @@ def _utc_now() -> str:
 
 
 def _epoch_to_utc(epoch: Any) -> str | None:
-    """Format a GTFS-RT POSIX timestamp as ISO-8601 UTC, or None."""
+    """Format a GTFS-RT POSIX timestamp as ISO-8601 UTC, or None.
+
+    Total by contract: a malformed or out-of-range epoch returns None rather
+    than raising. `datetime.fromtimestamp` raises OverflowError/OSError/ValueError
+    on values outside the platform's representable range (a corrupt feed could
+    send one), and those sit inside the guard here alongside the int() cast so
+    the caller never has to worry about it.
+    """
     try:
         value = int(epoch)
-    except (TypeError, ValueError):
+        return datetime.fromtimestamp(value, tz=timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+    except (TypeError, ValueError, OverflowError, OSError):
         return None
-    return datetime.fromtimestamp(value, tz=timezone.utc).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
-    )
 
 
 def _gtfs_date_to_iso(value: Any) -> str | None:
@@ -73,6 +80,26 @@ def _int_or_none(value: Any) -> int | None:
         return None
 
 
+def _first_translation_text(value: Any) -> str | None:
+    """First text of a GTFS-RT TranslatedString, tolerating every shape.
+
+    ``value`` may be absent, a plain string, or ``{"translation": [{"text": …}]}``
+    where ``translation`` can legitimately be an EMPTY list. The previous code
+    indexed ``[0]`` into that list unconditionally, which raised IndexError on
+    the empty case — the one alert-url shape that carries a URL key but no
+    entries. This handles all of them and never raises.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        translations = value.get("translation") or []
+        if translations and isinstance(translations[0], dict):
+            return translations[0].get("text")
+    return None
+
+
 # ---------------------------------------------------------------------------
 # snapshot bookkeeping
 # ---------------------------------------------------------------------------
@@ -84,6 +111,16 @@ def _open_snapshot(
     header = payload.get("header", {})
     feed_epoch = _int_or_none(header.get("timestamp"))
     entities = payload.get("entity", []) or []
+
+    # The rt_snapshot idempotency guard is UNIQUE(feed, feed_timestamp_epoch),
+    # and SQL treats NULLs as distinct — so a NULL epoch would bypass dedup and
+    # let identical snapshots pile up. Every observed GTFS-RT header carries a
+    # timestamp; if one ever does not, refuse it here rather than silently
+    # defeating the guard. (Documented on the table in sql/06_realtime.sql.)
+    if feed_epoch is None:
+        print(f"    {feed}: header carries no timestamp; snapshot skipped "
+              f"(cannot be de-duplicated safely)")
+        return None
 
     try:
         cursor = conn.execute(
@@ -183,8 +220,7 @@ def _shred_alerts(
             entity_id,
             _int_or_none(alert.get("cause")),
             _int_or_none(alert.get("effect")),
-            alert.get("url", {}).get("translation", [{}])[0].get("text")
-            if isinstance(alert.get("url"), dict) else alert.get("url"),
+            _first_translation_text(alert.get("url")),
         ))
 
         # headerText / descriptionText are TranslatedString: one row per

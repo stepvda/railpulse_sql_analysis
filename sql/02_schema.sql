@@ -250,10 +250,12 @@ CREATE TABLE platform (
     latitude      REAL,
     longitude     REAL,
     stop_desc     TEXT,               -- 'NMBSSNCB RAIL PLATFORM' / 'RAIL+BUS ...'
-    -- Cheap, indexable predicate. Q2 needs "real, numbered platforms only";
-    -- writing `WHERE has_platform_code = 1` stays SARGable, whereas
-    -- `WHERE platform_code IS NOT NULL` on a nullable TEXT column does not
-    -- benefit from the composite index we build in 04_indexes.sql.
+    -- A small-cardinality integer flag for "real, numbered platform" (Q2).
+    -- Note: `WHERE platform_code IS NOT NULL` would ALSO be SARGable (a range
+    -- seek), so this is not a SARGability fix. Its value is that a 0/1 integer
+    -- composes cleanly into the FRONT of the composite covering index
+    -- ix_platform_station (station_id, has_platform_code, platform_code), which
+    -- a nullable TEXT column range-scanned does not do as tidily.
     has_platform_code INTEGER NOT NULL CHECK (has_platform_code IN (0, 1)),
     UNIQUE (station_id, platform_code)
 );
@@ -334,6 +336,10 @@ CREATE TABLE trip (
     service_id            TEXT NOT NULL REFERENCES service(service_id),
     trip_headsign         TEXT,        -- terminal destination shown to passengers
     trip_short_name       TEXT,        -- public train number, e.g. 'IC 1832'
+    -- GTFS block: trips sharing a block_id are worked by the same physical
+    -- vehicle in sequence, so a passenger can stay aboard from one to the next
+    -- without changing trains. Populated on every trip in this feed; carried for
+    -- completeness, not used by any Sprint-1 analysis.
     block_id              TEXT,
     direction_id          INTEGER CHECK (direction_id IN (0, 1)),
     -- GTFS 0/1/2 vocabulary; 0 = "no information" (NOT "no"). See DQ-02.

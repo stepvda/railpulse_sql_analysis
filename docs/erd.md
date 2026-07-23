@@ -12,6 +12,12 @@ Source: SNCB/NMBS GTFS Static, feed version `2026-07-20`, timetable window
 `2025-12-20` to `2026-12-12` (358 distinct operating dates), `feed_lang = 'fr'`.
 `PRAGMA foreign_key_check` returns no rows.
 
+**Reading the crow's-foot notation.** The symbol where a line meets a table
+encodes how many rows may participate: `||` exactly one, `o|` zero or one, `o{`
+zero or many, `|{` one or many. Read `station ||--o{ platform` as "one station
+has zero or many platforms; every platform belongs to exactly one station". The
+symbol nearest a table describes that table's side.
+
 The model is split into three diagrams because one diagram containing all
 29 modelled tables is unreadable. They are the same database:
 
@@ -30,7 +36,7 @@ Row counts as built:
 | `station` | 652 | | `transfer` | 733 |
 | `platform` | 2 243 | | `text_translation` | 2 599 |
 | `route` | 1 801 | | `feed_info` | 1 |
-| `service` | 51 593 | | `ingestion_run` | 1 |
+| `service` | 51 593 | | `ingestion_run` | one per build (accumulates) |
 | `service_date` | 4 697 139 | | `rejected_row` | 12 |
 | `trip` | 134 809 | | `rt_*` | accumulating — see §3 |
 
@@ -41,9 +47,10 @@ Row counts as built:
 `service_date` and `text_translation` are `WITHOUT ROWID` tables: their primary
 key *is* the row, which removes a B-tree hop and stores the key columns once
 instead of twice. Measured on the 4.7 M row calendar by loading it both ways
-into a scratch database, the `WITHOUT ROWID` form occupies 189 MiB against
-354 MiB for a rowid table carrying an equivalent `UNIQUE (service_id,
-service_date)` index — a saving of 166 MiB.
+into a scratch database, the `WITHOUT ROWID` form occupies roughly half
+the space of a rowid table carrying an equivalent `UNIQUE (service_id,
+service_date)` index — on the order of 190 MiB against 360 MiB. Exact figures
+vary with SQLite version and fill factor; the ~2x ratio is the durable point.
 
 ```mermaid
 erDiagram
@@ -85,7 +92,7 @@ erDiagram
         REAL latitude
         REAL longitude
         TEXT stop_desc
-        INTEGER has_platform_code "NOT NULL - SARGable form of platform_code IS NOT NULL"
+        INTEGER has_platform_code "NOT NULL - 0/1 flag; front of ix_platform_station"
     }
 
     route {
@@ -357,7 +364,7 @@ erDiagram
         INTEGER arrival_delay_s
         INTEGER departure_epoch
         INTEGER departure_delay_s "signed seconds against the timetable"
-        INTEGER schedule_relationship FK "2 means SKIPPED at stop level"
+        INTEGER schedule_relationship FK "stop-level: 1=SKIPPED, 2=NO_DATA"
     }
 
     rt_alert {
@@ -515,7 +522,7 @@ more. Counts are from the built database.
 | `rt_alert` | `rt_alert_informed_entity` | 1 → 0..N | `(snapshot_id, rt_entity_id)` | Which part of the network the alert is about. Every alert polled so far is agency-wide — `agency_id` set, `route_id`/`stop_id`/`trip_id` NULL on every row — but the table models the full GTFS-RT shape. |
 | `rt_alert` | `rt_alert_active_period` | 1 → 0..N | `(snapshot_id, rt_entity_id)` | The windows during which the alert applies. |
 | `ref_schedule_relationship` | `rt_trip_update` | 1 → 0..N | `schedule_relationship` | SCHEDULED / ADDED / CANCELED and so on at trip level. |
-| `ref_schedule_relationship` | `rt_stop_time_update` | 1 → 0..N | `schedule_relationship` | The same enumeration at call level, where 2 means SKIPPED. A skipped call is a cancellation, not a zero-delay departure. |
+| `ref_schedule_relationship` | `rt_stop_time_update` | 1 → 0..N | `schedule_relationship` | The **stop-level** enum, which differs from the trip-level one on the same integers: 1 = SKIPPED (a cancellation), 2 = NO_DATA (no prediction, NOT a cancellation). `v_rt_departure_performance` counts only 1 as cancelled. |
 | `ref_alert_cause` | `rt_alert` | 1 → 0..N | `rt_alert.cause` | STRIKE, WEATHER, TECHNICAL_PROBLEM, … |
 | `ref_alert_effect` | `rt_alert` | 1 → 0..N | `rt_alert.effect` | NO_SERVICE, SIGNIFICANT_DELAYS, DETOUR, … |
 | `trip` | `rt_trip_update` | 1 → 0..N | `rt_trip_update.trip_id` | **Soft link, no constraint.** See section 3. |

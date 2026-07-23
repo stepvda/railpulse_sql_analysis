@@ -14,18 +14,21 @@ Licence CC BY 4.0, attribution "NMBS-SNCB - Open Data - 2026-07-20".
 operating dates). Station and headsign names are therefore **French**; nl/de/en
 live in `text_translation`.
 
-**Build provenance.** The single row in `ingestion_run` records the load that
-produced this file: started `2026-07-23T08:04:59Z`, finished
-`2026-07-23T08:06:34Z`, 7 057 090 rows staged, 6 997 455 rows loaded, 12 rows
-rejected, status `ok`. `PRAGMA foreign_key_check` returns clean. Do not subtract
-those first two figures: `rows_loaded` counts only `stop_time` + `trip` +
-`service_date` — see [`ingestion_run`](#ingestion_run).
+**Build provenance.** `ingestion_run` records one row per load (a rebuild adds a
+new row and keeps the old ones — it is an audit log, not a status flag). Each
+records the start/finish time, the number of rows staged, loaded and rejected,
+and the status. The live figures for the current database are printed by
+`railpulse info`; they are not transcribed here because they change with every
+build and the point of the audit table is that the database describes itself.
+`PRAGMA foreign_key_check` returns clean after a normal build. Note that
+`rows_loaded` counts only `stop_time` + `trip` + `service_date`, so it is not
+"staged minus rejected" — see [`ingestion_run`](#ingestion_run).
 
-**Size on disk.** 1 478 MiB, of which `dbstat` attributes 458 MiB — a
-little under a third — to the staging layer, which this particular build
-retained (`railpulse build --keep-staging`); a normal build drops it and
-`VACUUM`s — see [Staging layer](#staging-layer-stg_). The figure is approximate
-because the real-time tables are append-only and grow with every poll.
+**Size on disk.** Roughly **1 GB** after a normal build, which drops the staging
+layer and `VACUUM`s. Two things make an exact byte count pointless to quote: a
+`--keep-staging` build is ~50% larger (staging is a second, untyped copy of the
+whole feed), and the real-time tables are append-only and grow with every poll.
+Run `railpulse info` for the current size.
 
 ---
 
@@ -398,9 +401,11 @@ is always identical to its parent station's (0 of 2 243 differ), so keeping it
 here would be a pure transitive dependency and a 3NF violation. Queries join
 through to `station`.
 
-`has_platform_code` is not redundant with `platform_code IS NOT NULL`: it is a
-cheap equality predicate that stays SARGable and lets the composite index
-`ix_platform_station (station_id, has_platform_code, platform_code)` be seeked
+`has_platform_code` is a 0/1 companion to `platform_code`. Note that
+`platform_code IS NOT NULL` is itself SARGable (a range seek), so this is not a
+SARGability fix; the flag's value is that a small-cardinality integer composes
+cleanly into the front of the composite index
+`ix_platform_station (station_id, has_platform_code, platform_code)`, which is seeked
 rather than scanned.
 
 Every one of the 652 stations owns exactly one `platform_code IS NULL` child.
@@ -648,7 +653,7 @@ differently. Coverage:
 | `stops` | `stop_name` | 652 | 642 | 642 |
 | `trips` | `trip_headsign` | 221 | 221 | 221 |
 
-Dutch covers all 652 stations; German and English are 10 short. Three of the
+Of the 652 stations, 651 have a Dutch name translation and 641 a German/English one (the row counts of 652/642/642 include a handful of entries that no longer match a current station — see below). So coverage is near-total but not literally complete. Three of the
 2 599 rows — the `nl`, `de` and `en` translations of a single `stop_name` value —
 match no current `stop_name` or `trip_headsign`. They are stale entries, kept
 because dropping them would lose information the publisher intended to ship.
@@ -700,7 +705,7 @@ DQ-05 summary rules).
 | Column | Type | Null | Key | GTFS source | Meaning |
 |---|---|---|---|---|---|
 | `rejected_id` | INTEGER | no | PK | — | Surrogate key, autoincrement |
-| `run_id` | INTEGER | yes | FK → `ingestion_run(run_id)` | — | Which run rejected it; NULL on all 12 current rows |
+| `run_id` | INTEGER | yes | FK → `ingestion_run(run_id)` | — | Which run rejected it; stamped by `build.py` after the transform (populated on all rows) |
 | `source_table` | TEXT | no | | — | Staging table the row came from, e.g. `stg_stop_times` |
 | `src_line_no` | INTEGER | yes | | — | Physical line number in the source `.txt`, for traceability |
 | `rule_code` | TEXT | no | | — | e.g. `DQ-03-IMPLAUSIBLE-DEPARTURE` |
@@ -827,13 +832,20 @@ the table an on-time-performance metric is computed from.
 | `arrival_delay_s` | INTEGER | yes | | `stopTimeUpdate[].arrival.delay` | Signed seconds against the timetable |
 | `departure_epoch` | INTEGER | yes | | `stopTimeUpdate[].departure.time` | Predicted departure, Unix epoch |
 | `departure_delay_s` | INTEGER | yes | | `stopTimeUpdate[].departure.delay` | Signed seconds — the client's metric |
-| `schedule_relationship` | INTEGER | yes | FK → `ref_schedule_relationship(code)` | `stopTimeUpdate[].scheduleRelationship` | 2 = SKIPPED at this level |
+| `schedule_relationship` | INTEGER | yes | FK → `ref_schedule_relationship(code)` | `stopTimeUpdate[].scheduleRelationship` | **stop-level** enum: 0 SCHEDULED, **1 SKIPPED**, **2 NO_DATA**, 3 UNSCHEDULED |
 
-Calls flagged 2 carry no time at all: they are cancellations, not zero-delay
-departures, and folding them in as `delay = 0` would flatter the operator. This
-is not a corner case: across the 14 600 loaded calls the split is 9 181 flagged
-2 (SKIPPED, 62.9%), 5 404 flagged 0 (SCHEDULED) and 15 flagged 1 (ADDED). Only
-4 980 rows carry a `departure_delay_s` at all, and 4 824 an `arrival_delay_s`.
+⚠️ **The stop-level enum is not the trip-level enum, though they share the
+integers.** At stop level, **1 = SKIPPED** (a cancellation of this call) and
+**2 = NO_DATA** (the operator has no prediction — the train is still expected).
+This is the opposite of the trip-level meaning of 2 (UNSCHEDULED), and reading
+stop-level 2 as a cancellation is a large error: the great majority of calls in
+a typical snapshot carry 2/NO_DATA, and treating those as cancelled both
+overstates cancellations and empties the punctuality denominator. `v_rt_departure_performance`
+counts only stop-level 1 as a cancellation (`is_skipped`), reports 2 separately
+(`has_no_data`), and leaves `is_on_time` NULL for both. The `ref_stop_schedule_relationship`
+table (separate from the trip-level `ref_schedule_relationship`) carries the
+correct labels and an `is_cancellation` flag. Per-poll counts drift with every
+snapshot; `railpulse info` and the Q6 coverage query report the live figures.
 
 ### `rt_alert`
 

@@ -85,6 +85,16 @@ CREATE TABLE IF NOT EXISTS ref_alert_effect (
 -- feed refreshes every ~30 s; if the poller runs more often than that (or a
 -- cron run overlaps a manual one) the same payload comes back with the same
 -- header timestamp and is rejected instead of double-counting every delay.
+--
+-- ⚠ ONE LIMITATION, STATED PLAINLY. SQL treats NULLs as distinct in a UNIQUE
+-- constraint, so if the feed ever omitted header.timestamp, two such snapshots
+-- would BOTH insert and the guard would silently fail. Every GTFS-RT header
+-- observed from this gateway carries a timestamp, so this is not hit in
+-- practice — and ingest_realtime.py additionally refuses to shred a snapshot
+-- whose epoch is NULL, so the hole cannot be reached through the normal path.
+-- A cleaner design would make the column NOT NULL, but that would reject a
+-- (hypothetical) timestamp-less snapshot outright rather than storing it for
+-- inspection, which is the wrong trade for an append-only observation log.
 -- ===========================================================================
 CREATE TABLE IF NOT EXISTS rt_snapshot (
     snapshot_id          INTEGER PRIMARY KEY AUTOINCREMENT,

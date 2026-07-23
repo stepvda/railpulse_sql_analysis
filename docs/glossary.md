@@ -132,8 +132,11 @@ This project splits GTFS's single `stops.txt` into two tables, `station` and
 **One trip stopping at one platform, once.** It records the arrival time, the
 departure time, and whether passengers may board or alight.
 
-This is the biggest table by far: **2,165,507 rows**. A trip with 16 stops
-produces 16 stop_times.
+This is the project's **fact table** — the event grain everything is really
+about — at **2,165,507 rows**. A trip with 16 stops produces 16 stop_times.
+(One table is longer still: `service_date`, the exploded calendar, at 4,697,139
+rows. But that is a dimension-support table of dates, not the events the
+analysis measures.)
 
 This document — and the project — uses the word **call** as a synonym, because
 "stop time" reads like a clock value rather than an event. "A call at platform
@@ -226,6 +229,14 @@ accessible" invents a fact, and it is the single most common error in
 accessibility reporting. This project counts only code `1` as a guarantee and
 reports `0` in its own column — which turns out to *be* the finding for Q5,
 because `wheelchair_accessible` is `0` for **all 134,809 trips**.
+
+### Block (`block_id`)
+
+A GTFS *block* ties together trips worked by the **same physical vehicle** in
+sequence. Two trips with the same `block_id` are the same train continuing under
+a new trip identity, so a passenger can stay aboard from one to the next without
+changing. It is populated on every trip in this feed and carried into the model
+for completeness; no Sprint-1 analysis uses it.
 
 ### Transfer
 
@@ -550,7 +561,7 @@ storing `departure_hour` as a column — see
 [Denormalisation](#denormalisation).
 
 The same trap: `WHERE substr(stop_id, 1, 21) = '...'` instead of
-`WHERE stop_id = '...'` (~570× slower here), and the classic
+`WHERE stop_id = '...'` (~500× slower here), and the classic
 `WHERE strftime('%Y', some_date) = '2026'` instead of
 `WHERE some_date >= '2026-01-01' AND some_date < '2027-01-01'`.
 
@@ -564,7 +575,7 @@ chooses from reality. Run at the end of every build.
 
 Rebuilds the database file compactly, returning freed space to the operating
 system. Run after dropping the staging tables, which is why the finished
-database is 1.0 GB rather than 1.5 GB.
+database is roughly 1 GB rather than the ~1.5 GB peak it reaches mid-build.
 
 ---
 
@@ -661,6 +672,24 @@ So the link is soft but **measured**: `railpulse verify` reports what percentage
 of realtime trips resolve against the current static feed (currently 100%), and
 the punctuality view inner-joins so unmatched rows are simply and correctly
 ignored.
+
+### Text-to-SQL (the SQL Chat page)
+
+Turning a question written in **plain English** into a SQL query automatically,
+using a language model. The dashboard's optional *SQL Chat* page does this: you
+type "*top 10 busiest stations by annual departures*", a local model writes the
+SQL, and it runs against the read-only database.
+
+Two ideas from this glossary matter for reading its code. It is **guarded by
+defence in depth**, not by trusting the model: a [read-only](#wal-write-ahead-logging)
+connection (a write simply raises), a text guardrail that only lets a single
+`SELECT`/`WITH` through, and execution *caps* — a timeout and a row limit — so a
+model-written cartesian join cannot hang the app. And the model is given the
+schema as **prompt context**; the rich version of that context is the same
+`v_departure`/annualise guidance the rest of this project relies on, so a capable
+model produces the same kind of correct SQL a human would. It is a local preview
+of Sprint 4's GenAI capstone; details in
+[`decisions.md` ADR-14](decisions.md#adr-14--sql-chat-text-to-sql-is-guarded-by-defence-in-depth-not-by-the-model).
 
 ### On-time
 

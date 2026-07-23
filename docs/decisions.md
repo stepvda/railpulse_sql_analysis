@@ -27,6 +27,7 @@ Sprint 2*: correct for the current scale, with a named trigger for change.
 | [ADR-11](#adr-11--indexes-are-built-after-the-bulk-load-and-only-when-a-query-names-them) | Indexes are built after the bulk load, and only when a query names them | Accepted |
 | [ADR-12](#adr-12--staging-is-dropped-after-a-successful-build-and-the-database-is-not-committed) | Staging is dropped after a successful build, and the database is not committed | Accepted |
 | [ADR-13](#adr-13--pandas-is-confined-to-the-rendering-layer) | pandas is confined to the rendering layer | Accepted |
+| [ADR-14](#adr-14--sql-chat-text-to-sql-is-guarded-by-defence-in-depth-not-by-the-model) | SQL Chat (text-to-SQL) is guarded by defence in depth, not by the model | Accepted, Sprint-4 preview |
 
 ---
 
@@ -484,7 +485,7 @@ system, then re-runs `ANALYZE`. `railpulse build --keep-staging` retains them fo
 debugging a transform rule against the exact bytes that produced it, or inspecting
 a row named by `rejected_row.src_line_no`. Separately, `.gitignore` excludes
 `data/*.db`, its `-wal`/`-shm` companions and `data/raw/*`: the database is a
-build artefact, fully reproducible from `railpulse build`, and at 1.5 GB it does
+build artefact, fully reproducible from `railpulse build`, and at ~1 GB it does
 not belong in version control. Note that the zip is ignored along with the
 database, so a fresh clone must download the feed once; `--offline` only helps a
 working copy that already has it.
@@ -492,13 +493,13 @@ working copy that already has it.
 **Consequences.** The shipped database contains only what is queried, and the
 repository stays small enough to clone. Reproducibility becomes a hard requirement
 rather than a nice property — if the build cannot recreate the database, there is
-no database. Note that the current `data/railpulse.db` was built with
-`--keep-staging` and still contains all ten `stg_*` tables; that is why the file
-measures 1,547 MB rather than the ~1,067 MB a default build produces.
+no database. A normal build drops the ten `stg_*` staging tables and `VACUUM`s,
+leaving a file of roughly 1 GB (1027 MB on the current build); a `--keep-staging`
+build is about 50% larger because staging is a second, untyped copy of the feed.
 
 **Alternatives rejected.** *Keep staging permanently:* a third of the file for
 data with no reader. *Commit the database so evaluators need no API key:*
-convenient, and it would put a 1.5 GB binary into git history permanently while
+convenient, and it would put a ~1 GB binary into git history permanently while
 letting the pipeline rot unnoticed. *Never stage at all:* forfeits ADR-01.
 
 ---
@@ -537,3 +538,59 @@ weekday/weekend split is written as a `UNION ALL` unpivot for that reason.
 `read_csv` on a 2.2 M-row file would load it whole where the current loader streams
 in 50,000-row batches. *No pandas at all:* the brief permits it for visualisation,
 and rejecting it would mean hand-rolling row-to-chart plumbing for no gain.
+
+---
+
+## ADR-14 — SQL Chat (text-to-SQL) is guarded by defence in depth, not by the model
+
+**Status:** Accepted, Sprint-4 preview.
+
+**Context.** `dashboard/sql_chat_page.py` lets a user ask the timetable a question
+in plain English; a local HuggingFace seq2seq model (`dashboard/text2sql_engine.py`)
+translates it to SQL, which is executed and shown. This is Sprint 4's GenAI
+capstone in miniature, previewed inside the Sprint 1 dashboard. An LLM writing SQL
+that then runs against your database is a security surface: the model is
+untrusted, and a user's question is untrusted input steering it. The Sprint 4
+brief is explicit about "code-level guardrails that intercept and block
+destructive queries".
+
+**Decision.** Never rely on the model — or on any single check — for safety.
+Three independent layers, each sufficient on its own for the write case:
+
+1. **Read-only connection.** Every query runs through `railpulse.db.connect(read_only=True)`,
+   a `file:…?mode=ro` handle. A write raises `attempt to write a readonly database`
+   at the engine, whatever SQL reached it. This is the guarantee; the rest is
+   depth.
+2. **A whole-statement guardrail** (`_is_safe_sql`). It strips comments, masks
+   string literals, rejects stacked statements (a `;` followed by more SQL), and
+   rejects any destructive keyword as a whole word anywhere in the text — then
+   requires the statement to begin with `SELECT` or `WITH`. It replaced a
+   first-word check that a `SELECT 1; DROP TABLE …` slipped straight through.
+3. **Execution caps** (`execute_readonly_capped`). A read-only query can still be
+   ruinous: a cartesian join over the 2.17 M-row fact table, or a bare
+   `SELECT * FROM stop_time`. A SQLite progress handler aborts any statement that
+   exceeds a wall-clock budget (default 10 s), and rows are pulled with
+   `fetchmany(max_rows + 1)` (default 5 000) instead of an unbounded `fetchall()`,
+   so neither time nor memory can run away.
+
+**Consequences.** The feature is safe against destructive SQL through the
+read-only handle alone, and safe against denial-of-service through the caps —
+both are covered by tests in `tests/test_sql_chat.py`, including the exact
+cartesian join that hung the dashboard in review. The model's own output quality
+is a separate matter and is *not* a safety concern: the default 0.2 B model
+handles simple lookups and struggles with the multi-table JOINs the analytical
+questions need. `PROSE_SCHEMA` — row counts, code meanings, the "use `v_departure`
+/ annualise" rules — is injected into the prompt in `rich` schema mode
+(`TEXT2SQL_SCHEMA_MODE=rich`) so a *capable* model can actually follow it; the
+default `compact` mode ships the terse `table(cols)` form the small model was
+trained on. The ML stack (torch + transformers, ~2 GB) is isolated in the `chat`
+optional extra, so the plain dashboard neither installs nor imports it, and the
+page degrades to an install prompt when it is absent.
+
+**Alternatives rejected.** *Trust the guardrail regex alone:* a regex over
+model output is the weakest of the three layers and the easiest to bypass; it is
+kept as depth, not as the guarantee. *Let queries run unbounded:* one bad
+generated join takes the dashboard down. *Bundle the ML deps into the dashboard
+extra:* forces a 2 GB install on everyone who only wants the report. *Ship a
+larger model by default:* better SQL, but a multi-GB download and minutes of
+CPU inference per question — the wrong default for a preview.

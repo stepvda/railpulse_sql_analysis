@@ -11,22 +11,38 @@
 -- WHY THESE INDEXES AND NOT OTHERS
 -- Every index below exists to serve a specific analytical query, and each is
 -- justified by an EXPLAIN QUERY PLAN before/after measurement recorded in
--- sql/analysis/q8_index_optimisation.sql and docs/analysis_report.md. An index
+-- sql/analysis/q7_index_optimisation.sql and docs/analysis_report.md. An index
 -- is not free: it costs disk, and it costs write throughput on every reload.
 -- Indexes nobody can name a query for are technical debt, so there are none.
 --
 -- The leading column of each composite index is always the *equality*
 -- predicate, and the range/grouping column follows — the standard rule that
 -- lets SQLite seek straight to a contiguous slice instead of scanning.
+--
+-- A CAVEAT ON THE PLAN CLAIMS IN THE COMMENTS BELOW AND IN q7. A query plan is
+-- chosen by the planner from the ANALYZE statistics and the SQLite version, and
+-- it can legitimately change between builds — the same SARGable-violation query
+-- has been observed here as both a bare SCAN and a covering-index SCAN on
+-- different runs. So read every "expect ..." note as the *shape* to look for
+-- (SEARCH vs SCAN, covering or not, a temp B-tree for grouping), not as a
+-- byte-exact string. Reproduce with EXPLAIN QUERY PLAN on your own build.
 -- ===========================================================================
 
 -- ---------------------------------------------------------------------------
 -- Q1 "which hour is busiest?" and every hourly profile.
 --
--- Covering index: is_boardable filters, departure_hour groups, and trip_id is
--- carried so the annualised variant (which weights each call by the number of
--- days its service actually runs) can join to `trip` without ever touching the
--- 2.2 M-row table itself.
+-- Covering index for the *unweighted* hourly histogram: is_boardable filters
+-- and departure_hour groups, so `SELECT departure_hour, COUNT(*) ... WHERE
+-- is_boardable = 1 GROUP BY departure_hour` is answered entirely from the index
+-- (measured ~3.7x faster than without it — see q7_index_optimisation.sql).
+--
+-- trip_id is the third column so the index stays covering when a query also
+-- needs the trip key. NOTE, HONESTLY: the *annualised* Q1 query does NOT use
+-- this index. Its plan drives off `trip` and joins into stop_time on the
+-- primary key (trip_id, stop_sequence) instead — verify with EXPLAIN QUERY PLAN
+-- on q7_plan_heaviest_query, which SEARCHes stop_time USING the PK autoindex,
+-- not this one. This index earns its place on the unweighted histogram and the
+-- hourly profiles, not on the annualised join.
 -- ---------------------------------------------------------------------------
 CREATE INDEX IF NOT EXISTS ix_stop_time_boardable_hour
     ON stop_time (is_boardable, departure_hour, trip_id);
@@ -103,8 +119,10 @@ CREATE INDEX IF NOT EXISTS ix_rejected_rule
 
 -- ---------------------------------------------------------------------------
 -- Refresh the query planner's table/index statistics. Without this SQLite
--- plans from row-count guesses; with it, the plans below are chosen from the
--- real distribution (e.g. that `is_boardable = 1` selects ~73 % of rows and is
--- therefore a poor leading filter on its own).
+-- plans from row-count guesses; with it, the plans are chosen from the real
+-- distribution (e.g. that `is_boardable = 1` selects 67 % of rows and is
+-- therefore a poor *leading* filter on its own — which is why every index that
+-- uses it puts an equality column ahead of it, or pairs it with the grouping
+-- column that makes the index covering).
 -- ---------------------------------------------------------------------------
 ANALYZE;

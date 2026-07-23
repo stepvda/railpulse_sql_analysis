@@ -235,3 +235,37 @@ def test_column_order_is_read_from_the_header_not_assumed(conn):
     ).fetchone()
     assert row["latitude"] == pytest.approx(50.845)
     assert row["longitude"] == pytest.approx(4.357)
+
+
+# ---------------------------------------------------------------------------
+# Realtime JSON shredding — pure-function edge cases (no DB needed)
+# ---------------------------------------------------------------------------
+import pytest as _pytest
+
+
+@_pytest.mark.parametrize("value, expected", [
+    (None, None),
+    ("plain string", "plain string"),
+    ({"translation": [{"text": "hello"}]}, "hello"),
+    ({"translation": []}, None),          # the empty-list case that used to crash
+    ({"translation": [{}]}, None),
+    ({"no_translation_key": 1}, None),
+    ({}, None),
+])
+def test_first_translation_text_never_raises(value, expected):
+    from railpulse.ingest_realtime import _first_translation_text
+    assert _first_translation_text(value) == expected
+
+
+@_pytest.mark.parametrize("epoch", [
+    None, "", "garbage", 99999999999999999999, -99999999999999,
+])
+def test_epoch_to_utc_is_total(epoch):
+    """A corrupt feed timestamp must return None, not raise."""
+    from railpulse.ingest_realtime import _epoch_to_utc
+    assert _epoch_to_utc(epoch) is None
+
+
+def test_epoch_to_utc_formats_a_real_timestamp():
+    from railpulse.ingest_realtime import _epoch_to_utc
+    assert _epoch_to_utc(1784792455) == "2026-07-23T07:40:55Z"

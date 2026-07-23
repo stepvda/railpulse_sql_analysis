@@ -37,6 +37,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = REPO_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
+# Also add the repo root so `dashboard` is importable as a package (needed by
+# the SQL Chat page which lives inside the dashboard/ directory).
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 import altair as alt
 
@@ -50,6 +54,8 @@ import streamlit as st
 
 from railpulse import config
 from railpulse.db import connect, iter_statements
+
+from dashboard.sql_chat_page import page_sql_chat
 
 # --------------------------------------------------------------------------
 # A note on `use_container_width=True`
@@ -1851,6 +1857,7 @@ PAGES = {
     "Q5 · Accessibility audit": page_q5,
     "Leaderboard · Five main hubs": page_leaderboard,
     "Data quality": page_data_quality,
+    "SQL Chat · Ask the timetable": page_sql_chat,
 }
 
 st.sidebar.title("RailPulse")

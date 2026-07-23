@@ -35,8 +35,8 @@ in [`analysis_results.md`](analysis_results.md), and the full result sets are in
    close.** It handles more annual departures than Bruxelles-Midi (311,324 vs
    283,415) across **6 platforms instead of 21**. That is 8,113 timetabled calls
    per platform against Midi's 2,085 — a **3.9× pressure differential**. On a
-   typical operating day its busiest platform turns over **11.2 trains in its
-   peak hour, one every 5.4 minutes**. Any winter resilience plan that treats
+   typical operating day its busiest platform turns over **12.8 trains in its
+   peak hour, one every 4.7 minutes**. Any winter resilience plan that treats
    the three Brussels stations as interchangeable is mis-specified.
 
 2. **The evening peak is real and the timetable file hides it.** Counting rows
@@ -174,15 +174,19 @@ than being silently assigned.
 
 ### Where the bottleneck actually bites
 
-| Platform | Busiest hour | Calls in that hour | Share of platform's day |
-|---|---|---|---|
-| Platform 3 | 09:00 | 791 | 6.6% |
-| Platform 4 | 10:00 | 722 | 6.9% |
-| Platform 2 | 22:00 | 487 | 6.5% |
-| Platform 1 | 14:00 | 409 | 6.0% |
+Each platform's busiest hour, chosen by annualised departures (the honest
+measure — ranking by raw timetable rows would name a different, less real hour):
 
-No platform concentrates more than 6.9% of its day into a single hour, which
-means Bruxelles-Central's problem is **sustained load, not peak spikes**. The
+| Platform | Busiest hour | Trains/day in peak | One every | Share of platform's day |
+|---|---|---|---|---|
+| Platform 3 | 08:00 | 12.8 | 4.7 min | 7.4% |
+| Platform 4 | 16:00 | 11.3 | 5.3 min | 6.4% |
+| Platform 2 | 07:00 | 10.9 | 5.5 min | 6.8% |
+| Platform 6 | 16:00 | 8.5 | 7.1 min | 8.5% |
+
+The busiest hours cluster in the commuter peaks (07:00–08:00, 16:00), and no
+platform concentrates more than 8.5% of its day into a single hour — so
+Bruxelles-Central's problem is **sustained load, not a single spike**. The
 station runs near capacity for most of the operating day, which is a harder
 problem than a peak: there is no trough in which to absorb a disruption.
 
@@ -251,7 +255,25 @@ The weekly rhythm is therefore **derived**: for each service, the modal number
 of operating days across the weeks in which it runs at all
 ([`v_service_frequency`](../sql/05_views.sql)).
 
-### Answer
+### First, a decision the brief forces: *which* services?
+
+The brief says classify each **active** service, and "active" is not defined. It
+matters more than it looks. The feed carries **51,593 service calendars, but
+34,305 of them (66%) are referenced by no trip at all** — a publisher habit of
+shipping calendars that nothing uses. So there are two honest populations:
+
+| "Active" means… | Services | High | Medium | Low/Special |
+|---|---|---|---|---|
+| has ≥1 operating date (**used below**) | 51,593 | **45.24%** | 34.65% | 20.11% |
+| used by ≥1 trip | 17,288 | 38.11% | **38.78%** | 23.11% |
+
+Under the second reading **Medium Frequency becomes the largest class**. The
+headline below uses the first (every published calendar), and reports the second
+in `q4_active_service_only` — neither is "more correct", they answer different
+questions. This fork is separate from, and additional to, the definition fork
+below.
+
+### Answer (all published calendars)
 
 | Class | Services | % of services | Operating days | % of operating days |
 |---|---|---|---|---|
@@ -265,6 +287,10 @@ The 20% classified Low/Special account for 2% of the railway. A winter
 timetable reduction that targets "the 20% of low-frequency services" would
 remove one fiftieth of actual service — and a reduction that touches the High
 Frequency tier is nine times more consequential per service than it looks.
+
+Weighted by the trips that actually reference each calendar (`q4_trip_weighted`,
+INNER-joined so trip-less calendars drop out), the High tier carries **67.52%**
+of annual trip-operating-days, Medium 25.79%, Low 6.69%.
 
 Underlying distribution: the two spikes are at **5 days** (16,541 services —
 Monday-to-Friday commuter) and **7 days** (6,420 — daily), with a third at
@@ -362,6 +388,13 @@ already modelled in the GTFS the operator publishes.
 | 4 | Gand-Saint-Pierre | 149,864 | 11 | 1,713 | 206 | 58 |
 | 5 | Anvers-Central | 131,812 | 16 | 825 | 125 | 61 |
 
+> Note: **"Calls per platform" is not "Annual departures ÷ Platforms"** — do not
+> try to reconcile those two columns. Annual departures weights each call by how
+> many days it runs (the honest volume measure); calls-per-platform divides the
+> *unweighted* timetable-call count by the platform count (the pressure index a
+> planner uses). They answer different questions and are shown side by side on
+> purpose.
+
 The three Brussels stations carry near-identical annual volumes over platform
 counts that differ by a factor of 3.5. **Bruxelles-Central absorbs the highest
 load on the fewest platforms in the country.**
@@ -443,7 +476,7 @@ warm-up. Reproduce with `make benchmark`.
 | Query | Indexed / materialised | Function-wrapped | Penalty |
 |---|---|---|---|
 | Q1 hourly histogram | 0.08 s | 9.04 s | **~100×** |
-| Q2 single-platform lookup | <0.01 s | 0.20 s | **~570×** |
+| Q2 single-platform lookup | 0.0004 s | 0.20 s | **~500×** |
 | Q4 weekday counts (4.7M rows) | 1.43 s | 2.92 s | ~2× |
 
 **Value of each index** — timed, then with the index dropped, then restored:
@@ -451,7 +484,7 @@ warm-up. Reproduce with `make benchmark`.
 | Query | With index | Without | Speed-up |
 |---|---|---|---|
 | Q1 hourly histogram | 0.10 s | 0.36 s | 3.7× |
-| Q2 platform counts at one station | 0.004 s | 5.95 s | **1,564×** |
+| Q2 platform counts at one station | 0.004 s | 5.95 s | **~1500×** |
 | Q5 amenity ratio per route | 0.011 s | 0.038 s | 3.6× |
 
 Q1 and Q4 get faster for **different reasons**, and the distinction matters. Q1

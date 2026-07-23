@@ -216,6 +216,12 @@ CHECKS: list[Check] = [
 
 def run_checks(conn: sqlite3.Connection) -> list[Check]:
     for check in CHECKS:
+        # Reset per run. CHECKS is module-level and reused, so without this a
+        # second call in the same interpreter (a test, or a long-lived process)
+        # could print an error left over from a previous, unrelated run.
+        check.error = None
+        check.value = None
+        check.passed = False
         try:
             row = conn.execute(check.sql).fetchone()
             check.value = row[0] if row else None

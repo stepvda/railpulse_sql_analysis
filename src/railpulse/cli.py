@@ -57,6 +57,20 @@ def _cmd_info(argv: list[str]) -> int:
 
     conn = connect(read_only=True)
     try:
+        # The file may exist but be empty or half-built. `info` is the command a
+        # user reaches for to diagnose exactly that, so it must not itself die
+        # with a raw "no such table" — report the state and stop.
+        has_schema = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master "
+            " WHERE type = 'table' AND name = 'feed_info'"
+        ).fetchone()[0]
+        if not has_schema:
+            print(f"database        {config.DB_PATH}  "
+                  f"({config.DB_PATH.stat().st_size / 1e6:,.0f} MB)")
+            print("state           file exists but has no schema — "
+                  "run `railpulse build`")
+            return 1
+
         feed = conn.execute(
             "SELECT * FROM feed_info LIMIT 1").fetchone()
         run = conn.execute(

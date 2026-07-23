@@ -1,8 +1,8 @@
 # RailPulse dashboard
 
-The Streamlit report layer over `data/railpulse.db`. Eight sidebar-navigated
-pages: an overview, one per graded question, the hub leaderboard and a data
-quality page.
+The Streamlit report layer over `data/railpulse.db`. Nine sidebar-navigated
+pages: an overview, one per graded question, the hub leaderboard, a data
+quality page, and an optional natural-language **SQL Chat** page (text-to-SQL).
 
 ## What it is, and what it deliberately is not
 
@@ -85,7 +85,7 @@ location if you keep the database elsewhere.
 
 The heaviest queries scan the 1.45 M boardable calls in `v_departure` and join
 them to the 134 809 trip calendars. On a warm page cache the slowest single
-block on this feed takes a few seconds; on a cold one, with the 1.5 GB database
+block on this feed takes a few seconds; on a cold one, with the ~1 GB database
 coming off disk for the first time, expect tens of seconds. They run **once**:
 
 * `@st.cache_resource` holds the connection pool, so reruns do not reopen the
@@ -126,6 +126,65 @@ across the whole pinned range. Switch it when the floor moves past 1.47.
 | **Q5 · Accessibility audit** | The mode split, the lowest-scoring routes ranked by passenger exposure, and a prominent caveat that `wheelchair_accessible` is unpopulated for all 134 809 trips. |
 | **Leaderboard** | The five main hubs compared structurally, plus the real-time punctuality leaderboard once the poller has collected snapshots. |
 | **Data quality** | The nine DQ rules with their counts queried live, the quarantined rows, feed characteristics that change every count, and a live `PRAGMA foreign_key_check`. |
+| **SQL Chat** | Ask the timetable in natural language; a local model writes the SQL, which is shown, run read-only under caps, and charted. Optional — see below. |
+
+## SQL Chat — the text-to-SQL page (optional, Sprint-4 preview)
+
+`SQL Chat` lets a non-technical user query the database in English. The question
+goes to a locally-running HuggingFace seq2seq model, which returns SQL; that SQL
+is shown in an expander, executed against the read-only database, and its result
+tabled and auto-charted. It is a fully local preview of Sprint 4's GenAI capstone
+— no API key, no cloud call.
+
+**Install (optional, ~2 GB).** The model stack is deliberately *not* part of the
+dashboard install, so the report stays lightweight:
+
+```bash
+make setup-chat            # or: pip install -e ".[chat]"  /  -r requirements-chat.txt
+```
+
+Without it, the page still loads and shows an install prompt instead of crashing.
+The default model (`juierror/flan-t5-text2sql-with-schema-v2`, ~0.2 B params)
+downloads ~200 MB on first use and runs on CPU.
+
+**Two implementation files.** [`text2sql_engine.py`](text2sql_engine.py) is the
+engine — schema extraction, prompt building, the safety guardrail, and the capped
+executor; model libraries are imported lazily so the module loads without them.
+[`sql_chat_page.py`](sql_chat_page.py) is the Streamlit page.
+
+**Safety — three independent layers** (design rationale in
+[`../docs/decisions.md` ADR-14](../docs/decisions.md#adr-14--sql-chat-text-to-sql-is-guarded-by-defence-in-depth-not-by-the-model)):
+
+1. **Read-only connection.** Queries run through `connect(read_only=True)`; a
+   write raises at the engine regardless of what SQL was produced.
+2. **Whole-statement guardrail** (`_is_safe_sql`). Strips comments, masks string
+   literals, rejects stacked statements and any destructive keyword anywhere,
+   and requires a leading `SELECT`/`WITH`. It replaced a first-word check that a
+   `SELECT 1; DROP TABLE …` passed through.
+3. **Execution caps** (`execute_readonly_capped`). A SQLite progress handler
+   aborts any query over a wall-clock budget (`TEXT2SQL_TIMEOUT`, default 10 s),
+   and rows are `fetchmany`-limited (`TEXT2SQL_MAX_ROWS`, default 5 000). A
+   cartesian join or an unbounded `SELECT *` can no longer hang the app.
+
+All three are tested in [`../tests/test_sql_chat.py`](../tests/test_sql_chat.py).
+
+**Honest limitation and how to improve it.** The small default model handles
+simple lookups ("how many stations?") and struggles with the multi-table JOINs
+the analytical questions need, because a 0.2 B model cannot reliably compose
+`v_departure` with `v_trip_service_days` and annualise. The careful schema
+guidance in `PROSE_SCHEMA` (row counts, code meanings, "use `v_departure`",
+"annualise") is only useful to a model large enough to read it, so it is opt-in:
+
+| Environment variable | Default | Effect |
+|---|---|---|
+| `TEXT2SQL_MODEL` | `juierror/flan-t5-text2sql-with-schema-v2` | Any HuggingFace seq2seq / text2text model ID |
+| `TEXT2SQL_SCHEMA_MODE` | `compact` | `rich` injects the full `PROSE_SCHEMA` + rules into the prompt — use with a capable model |
+| `TEXT2SQL_MAX_ROWS` | `5000` | Row ceiling per result |
+| `TEXT2SQL_TIMEOUT` | `10` | Per-query wall-clock budget, seconds |
+
+For real answers, point `TEXT2SQL_MODEL` at a larger instruction-tuned model and
+set `TEXT2SQL_SCHEMA_MODE=rich`. The default is chosen for a small, fast,
+fully-local preview, not for accuracy.
 
 ## Charts
 
@@ -177,6 +236,9 @@ their absolute scales differ by an order of magnitude.
 
 **Data quality** — the nine DQ rules, counted live
 ![Data quality](../docs/assets/dashboard-data-quality.png)
+
+**SQL Chat** — natural-language question → generated SQL → read-only result
+![SQL Chat](../docs/assets/dashboard-sql-chat.png)
 
 </details>
 

@@ -286,6 +286,20 @@ def analyse(
     started = time.perf_counter()
     results: dict[str, list[Query]] = {}
     try:
+        # A file can exist but hold no schema — a half-created DB, or one pointed
+        # at the wrong path. Running 47 queries against it just prints 47
+        # identical "no such table" errors; catch it once, up front, with an
+        # instruction instead.
+        has_core = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master "
+            " WHERE type = 'table' AND name = 'stop_time'"
+        ).fetchone()[0]
+        if not has_core:
+            raise SystemExit(
+                f"{config.DB_PATH} exists but has no core schema (no `stop_time` "
+                f"table). Run `railpulse build` to populate it."
+            )
+
         print(f"=== RailPulse analysis ({len(ordered)} files) ===")
         for path in ordered:
             results[path.name] = run_file(conn, path)

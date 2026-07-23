@@ -55,8 +55,15 @@ ORDER BY weekday_flags_set;
 
 -- @label: q4_frequency_classification
 -- @title: Service frequency classification (HEADLINE ANSWER)
--- @description: Each of the 51 593 services classified on its modal
---   days-per-active-week, with the share of the fleet in each class.
+-- @description: All 51 593 published service calendars, classified on the modal
+--   days-per-active-week. NOTE THE POPULATION: the brief asks to classify each
+--   "active" service, and this query reads "active" as "has at least one
+--   operating date" — which every one of the 51 593 does. But 34 305 of them
+--   (66 %) are referenced by no trip in this feed at all. Read "active" instead
+--   as "used by at least one trip" and the split shifts to 38.11 / 38.78 /
+--   23.11, making Medium Frequency the largest class — see q4_active_service_only
+--   directly below. Both readings are published because the brief's wording is
+--   genuinely ambiguous and the choice moves the headline.
 WITH classified AS (
     SELECT
         service_id,
@@ -113,12 +120,60 @@ GROUP BY typical_days_per_week
 ORDER BY typical_days_per_week;
 
 
--- @label: q4_frequency_by_trips
+-- @label: q4_active_service_only
+-- @title: The same classification over trip-referenced calendars only
+-- @description: The second reading of "active". 34 305 of the 51 593 calendars
+--   in calendar.txt are used by no trip in this feed (the service -> trip
+--   relationship is optional in GTFS, and this publisher ships many unused
+--   calendars). Restricting to the 17 288 that a trip actually references moves
+--   High Frequency from 45.24 % down to 38.11 % and makes Medium Frequency
+--   (38.78 %) the largest class. Neither reading is "more correct" — they answer
+--   "how are the published calendars shaped?" vs "how are the calendars trains
+--   actually use shaped?" — so both ship, exactly as Q1 ships naive and
+--   annualised side by side.
+WITH classified AS (
+    SELECT
+        f.service_id,
+        CASE
+            WHEN f.typical_days_per_week >= 5 THEN 'High Frequency'
+            WHEN f.typical_days_per_week >= 2 THEN 'Medium Frequency'
+            ELSE 'Low Frequency/Special'
+        END AS frequency_class
+    FROM v_service_frequency f
+    -- EXISTS, not JOIN: we are re-classifying the same 1-row-per-service
+    -- population, just filtered to services a trip references. A JOIN here would
+    -- multiply each calendar by its trip count and corrupt the counts — which is
+    -- precisely the bug this query was written to avoid (see q4_trip_weighted).
+    WHERE EXISTS (SELECT 1 FROM trip t WHERE t.service_id = f.service_id)
+)
+SELECT
+    frequency_class,
+    COUNT(*) AS services,
+    ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (), 2) AS pct_of_services
+FROM classified
+GROUP BY frequency_class
+ORDER BY
+    CASE frequency_class
+        WHEN 'High Frequency'        THEN 1
+        WHEN 'Medium Frequency'      THEN 2
+        ELSE 3
+    END;
+
+
+-- @label: q4_trip_weighted
 -- @title: Frequency classes weighted by the trips that use them
--- @description: 20 % of *services* being 'Low Frequency/Special' does not mean
+-- @description: 20 % of *calendars* being 'Low Frequency/Special' does not mean
 --   20 % of the timetable is. A service is a calendar, not a train. This
---   re-weights the same classification by how many trips reference each
+--   re-weights the classification by the trips that actually reference each
 --   calendar and how often they run — the version a planner cares about.
+--
+--   INNER JOIN, deliberately. A LEFT JOIN would keep the 34 305 trip-less
+--   calendars as one unmatched row each, count them once in trip_operating_days,
+--   and inflate the total ~4.25x (the earlier version of this query did exactly
+--   that and reported 82.88 % where the truth is 67.52 %). With the INNER JOIN,
+--   trip_operating_days sums to 1 256 470 — identical to SUM(operating_days)
+--   over v_trip_service_days, the independent per-trip source. That equality is
+--   the correctness check.
 SELECT
     f.frequency_class,
     COUNT(DISTINCT f.service_id) AS services,
@@ -129,7 +184,7 @@ SELECT
     ROUND(100.0 * SUM(f.operating_days)
           / SUM(SUM(f.operating_days)) OVER (), 2) AS pct_of_annual_service
 FROM v_service_frequency f
-LEFT JOIN trip t ON t.service_id = f.service_id
+JOIN trip t ON t.service_id = f.service_id
 GROUP BY f.frequency_class
 ORDER BY pct_of_annual_service DESC;
 

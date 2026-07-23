@@ -30,21 +30,25 @@
 -- which prints a table of real elapsed times and restores every index it
 -- touched.
 --
--- MEASURED RESULTS
+-- MEASURED RESULTS — ILLUSTRATIVE, NOT CANONICAL
 --
--- Absolute times depend on page-cache state and on what else the machine is
--- doing, so treat the ratios as the finding and reproduce the numbers yourself.
--- Best of three runs after a warm-up, on the full 2 165 507-row fact table:
+-- These are one machine's numbers on one run. Absolute times depend on
+-- page-cache state, the SQLite version and what else the box is doing, and they
+-- move by 2-3x between runs here. Treat the RATIOS as the finding and reproduce
+-- the numbers on your own build with `railpulse benchmark --with-index-drops`,
+-- which is the authoritative source — this comment is a snapshot of its output,
+-- not an independent claim. Best of three runs after a warm-up, on the full
+-- 2 165 507-row fact table:
 --
 --   A. cost of a SARGable violation (same answer, two ways)
---      Q1 hourly histogram                0.08 s  ->  9.04 s      ~100x worse
---      Q2 single-platform lookup         <0.01 s  ->  0.20 s      ~570x worse
---      Q4 weekday counts (4.70 M rows)    1.43 s  ->  2.92 s        ~2x worse
+--      Q1 hourly histogram              0.08 s  ->  9.04 s     ~100x worse
+--      Q2 single-platform lookup      0.0004 s  ->  0.20 s     ~500x worse
+--      Q4 weekday counts (4.70 M rows)  1.43 s  ->  2.92 s       ~2x worse
 --
 --   B. value of each index (timed, then with the index DROPped, then restored)
---      Q1 hourly histogram                0.10 s  ->  0.36 s        3.7x
---      Q2 platform counts at one station  0.004 s ->  5.95 s    1 564x
---      Q5 amenity ratio per route         0.011 s ->  0.038 s       3.6x
+--      Q1 hourly histogram              0.10 s  ->  0.36 s       ~4x
+--      Q2 platform counts at one station 0.004 s ->  5.95 s   ~1500x
+--      Q5 amenity ratio per route       0.011 s ->  0.038 s      ~3x
 --
 -- Note that Q1 and Q4 differ in *why* they get faster. Q1 is an index effect:
 -- with ix_stop_time_boardable_hour the plan is a covering SEARCH, without it
@@ -75,7 +79,7 @@ GROUP BY departure_hour;
 --   function instead of using the materialised one. Expect the plan to gain
 --   USE TEMP B-TREE FOR GROUP BY: strftime() must be evaluated once per row
 --   before anything can be grouped, so the index can no longer supply the
---   order. Measured cost: 5.569 s against 0.070 s — 80x slower for the same
+--   order. Measured cost: ~9 s against ~0.08 s — about 100x slower for the same
 --   answer. This single comparison is why departure_hour exists as a stored
 --   column in 02_schema.sql.
 EXPLAIN QUERY PLAN
@@ -100,9 +104,12 @@ WHERE stop_id = 'gs:nmbssncb:8813003_4'
 -- @label: q7_plan_q2_sargable_violation
 -- @title: Q2 platform lookup — the SARGable violation
 -- @description: The same lookup written with substr() on the indexed column.
---   Expect SCAN rather than SEARCH: the index is still read (it is narrower
---   than the table) but every entry must be decoded and tested. Measured cost:
---   0.114 s against under a millisecond.
+--   The key word to look for flips from SEARCH to SCAN: instead of seeking to
+--   one contiguous slice, the engine must decode and test every row. On this
+--   build the plan is a bare `SCAN stop_time`; on others it has been a
+--   `SCAN ... USING COVERING INDEX ... (ANY(stop_id) ...)` — either way it is a
+--   scan, not a seek, and that is the point. Measured cost: ~0.2 s against under
+--   a millisecond for the SARGable form.
 EXPLAIN QUERY PLAN
 SELECT COUNT(*) AS calls
 FROM stop_time
@@ -146,9 +153,13 @@ GROUP BY day_of_week;
 -- @label: q7_plan_heaviest_query
 -- @title: The heaviest query in the project — Q1 annualised, fully planned
 -- @description: This is the real workload: 2.2 M calls joined to a 134 809-row
---   aggregate derived from 4.7 M service dates. Expect the ix_trip_service and
---   service_date primary key to carry the aggregate, and
---   ix_stop_time_boardable_hour to carry the fact side.
+--   aggregate derived from 4.7 M service dates. The plan observed on this build
+--   drives off `trip`, aggregates service_date on its PRIMARY KEY, then joins
+--   into stop_time on ITS primary key (trip_id, stop_sequence) — i.e.
+--   `SEARCH st USING INDEX sqlite_autoindex_stop_time_1 (trip_id=?)`, NOT
+--   ix_stop_time_boardable_hour. That is worth noticing: the covering index
+--   built for the unweighted histogram does not help the annualised join, which
+--   is trip-keyed. Plans can shift with ANALYZE stats; confirm on your build.
 EXPLAIN QUERY PLAN
 WITH trip_days AS (
     SELECT t.trip_id, COUNT(sd.service_date) AS operating_days

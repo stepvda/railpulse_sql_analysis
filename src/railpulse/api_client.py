@@ -5,9 +5,14 @@ blocked! Read the documentation for the usage of the API to make sure you're
 compliant."* This module is that compliance, in code:
 
 * **Client-side throttle.** The portal publishes 10 requests/minute and 100
-  requests/day for anonymous callers. A process-wide gate keeps at least
-  ``60 / MAX_REQUESTS_PER_MINUTE`` seconds between calls, so the limit is never
-  approached rather than being discovered by getting a 429.
+  requests/day for anonymous callers. Each client instance holds a gate that
+  keeps at least ``60 / MAX_REQUESTS_PER_MINUTE`` seconds between *its own*
+  calls, so the limit is never approached rather than being discovered by
+  getting a 429. The gate is per-client, not global: the whole pipeline creates
+  exactly one client per process (build makes one, each poll makes one), so in
+  practice that is one gate per process — but two clients in one process would
+  not share it. The published quota is generous enough (a full build is one
+  request; a poll is two) that this is never a real constraint.
 * **Honour ``Retry-After``.** On 429 or 503 the server's own backoff is used
   when it supplies one, and exponential backoff with a cap when it does not.
 * **Retry only what is retryable.** 4xx other than 429 means the request is
@@ -35,7 +40,12 @@ from . import config
 
 
 class RateLimiter:
-    """Minimum-interval gate shared by every request this process makes."""
+    """Minimum-interval gate shared by every request made through ONE client.
+
+    Not process-global: it is per-client-instance. The pipeline creates one
+    client per process, so that is one gate per process in practice — but the
+    gate lives on the client, not in a module-level singleton.
+    """
 
     def __init__(self, min_interval_seconds: float) -> None:
         self.min_interval = min_interval_seconds
@@ -84,7 +94,14 @@ class BelgianMobilityClient:
         timeout: int | None = None,
     ) -> None:
         self.api_key = (api_key if api_key is not None else config.API_KEY).strip()
-        self.max_retries = max_retries or config.MAX_RETRIES
+        # Floor at 1: max_retries is really "max attempts", and 0 (or a negative
+        # value, whether from RAILPULSE_MAX_RETRIES or passed explicitly) would
+        # make _request() skip its loop entirely and return nothing, so a mis-set
+        # value would silently make every fetch a no-op. `is not None` rather
+        # than `or` so an explicit 0 is floored too, not replaced by the default.
+        requested_retries = (max_retries if max_retries is not None
+                             else config.MAX_RETRIES)
+        self.max_retries = max(requested_retries, 1)
         self.timeout = timeout or config.REQUEST_TIMEOUT_SECONDS
         rpm = max_requests_per_minute or config.MAX_REQUESTS_PER_MINUTE
         self.limiter = RateLimiter(60.0 / max(rpm, 1))

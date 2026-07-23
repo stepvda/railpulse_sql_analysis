@@ -1,0 +1,21 @@
+# SQL Chat — local text-to-SQL inference (a Sprint-4 preview).
+#   pip install -r requirements-dashboard.txt -r requirements-chat.txt
+#   (or, with the package installed:  pip install -e ".[chat]")
+#
+# This is a heavy, optional stack (~2 GB) kept out of requirements-dashboard.txt
+# on purpose. The dashboard runs fine without it — the SQL Chat page detects the
+# missing libraries and shows an install prompt instead of crashing.
+#
+#   transformers  the HuggingFace inference runtime (loads the seq2seq model)
+#   torch         the tensor backend — CPU-only by default, no GPU required
+#   accelerate    speeds up model loading / device placement
+#
+# The default model (juierror/flan-t5-text2sql-with-schema-v2, ~0.2 B params)
+# downloads ~200 MB on first use and is cached. Point TEXT2SQL_MODEL at a larger
+# model and set TEXT2SQL_SCHEMA_MODE=rich for stronger multi-table results —
+# see dashboard/README.md.
+-r requirements-dashboard.txt
+
+torch>=2.0,<3
+transformers>=4.40,<5
+accelerate>=0.28,<2

@@ -150,3 +150,16 @@ def test_permanent_statuses_are_not_retried(status):
     """Retrying a 401 or a 404 is not resilience, it is abuse: the request is
     wrong and repeating it will not make it right."""
     assert status not in BelgianMobilityClient.RETRYABLE_STATUSES
+
+
+# ---------------------------------------------------------------------------
+# max_retries floor (a mis-set env var must not silently no-op every fetch)
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("requested", [0, -1, -100])
+def test_max_retries_floors_at_one(requested):
+    """max_retries=0 would make _request skip its loop and fetch nothing."""
+    assert BelgianMobilityClient(api_key="", max_retries=requested).max_retries == 1
+
+
+def test_max_retries_passes_through_when_positive():
+    assert BelgianMobilityClient(api_key="", max_retries=7).max_retries == 7

@@ -102,7 +102,7 @@ def build(
         if not zip_path.exists():
             raise SystemExit(
                 f"--offline was requested but {zip_path} does not exist. "
-                f"Run `railpulse fetch-static` first."
+                f"Run `railpulse fetch` first."
             )
         print(f"[1/8] offline: using {zip_path} "
               f"({zip_path.stat().st_size / 1e6:0.1f} MB)")
