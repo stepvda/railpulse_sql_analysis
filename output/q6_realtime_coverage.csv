@@ -1,0 +1,2 @@
+trip_update_snapshots,alert_snapshots,first_observation_utc,last_observation_utc,raw_stop_time_updates,distinct_observed_calls,calls_with_a_delay_reading,distinct_trips_seen,pct_realtime_trips_matching_static
+12,10,2026-07-23T09:17:31Z,2026-07-23T09:26:11Z,19723,1758,561,127,100.0

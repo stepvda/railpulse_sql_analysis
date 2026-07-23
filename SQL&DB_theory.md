@@ -2130,4 +2130,4 @@ would be inventing a fact, and it is exactly the error `ref_accessibility`'s
 *Sources: `sql/02_schema.sql`, `sql/03_transform.sql`, `sql/04_indexes.sql`,
 `sql/05_views.sql`, `sql/06_realtime.sql`, `src/railpulse/db.py`, and
 `data/railpulse.db` (SNCB/NMBS GTFS feed `nmbssncb` version 2026-07-20, valid
-2025-12-20 to 2026-12-12). Data licensed CC BY 4.0 — "NMBS/SNCB - Open Data".*
+2025-12-20 to 2026-12-12). Data licensed CC BY 4.0 — "NMBS-SNCB - Open Data".*

@@ -1,0 +1,2 @@
+id,parent,notused,detail
+3,0,0,SEARCH stop_time USING COVERING INDEX ix_stop_time_stop_boardable (ANY(stop_id) AND is_boardable=?)

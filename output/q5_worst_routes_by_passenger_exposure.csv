@@ -1,0 +1,16 @@
+priority,route_short_name,route_long_name,scheduled_trips,annual_trips,amenity_ratio,pct_any_amenity
+1,BUS,Luxembourg (LU) -- Arlon,663,4989,0 / 663,0.0
+2,BUS,Bruxelles-Midi -- Nivelles,331,2822,0 / 331,0.0
+3,BUS,Hasselt -- Kiewit,203,1824,0 / 203,0.0
+4,BUS,Ottignies -- Fleurus,174,1432,0 / 174,0.0
+5,BUS,Bruges -- Gand-Saint-Pierre,82,1246,0 / 82,0.0
+6,BUS,Zottegem -- Denderleeuw,173,1232,0 / 173,0.0
+7,BUS,Begijnendijk -- Aarschot,145,1166,0 / 145,0.0
+8,BUS,Luttre -- Manage,32,1048,0 / 32,0.0
+9,BUS,Liège-Guillemins -- Flémalle-Haute,167,894,0 / 167,0.0
+10,BUS,Charleroi-Central -- Couvin,76,893,0 / 76,0.0
+11,BUS,Maastricht (NL) -- Liège-Guillemins,99,867,0 / 99,0.0
+12,BUS,Verviers-Central -- Welkenraedt,88,866,0 / 88,0.0
+13,BUS,Herentals -- Mol,124,856,0 / 124,0.0
+14,BUS,Hal -- Braine-le-Comte,154,853,0 / 154,0.0
+15,BUS,Hasselt -- Zonhoven,66,842,0 / 66,0.0

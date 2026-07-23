@@ -109,9 +109,16 @@ bikes_allowed,block_id,direction_id,route_id,service_id,shape_id,trip_headsign,t
 #   T_EVENING  seq 2 AGAIN                  -> DQ-05 duplicate call
 #   T_WEEKEND  seq 1,2   crosses midnight, published as 24:10 -> day_offset 1
 #   T_BUS      seq 1     pickup=1 AND drop_off=1 -> pass-through, not boardable
-#   T_MORNING  seq 3     87:16:00                -> DQ-03 implausible
+#   T_MORNING  seq 3     87:39:00                -> DQ-03 implausible
 #   T_GHOST    seq 1     unknown trip            -> DQ-04 orphan
 #   T_MORNING  seq 4     unknown stop            -> DQ-04 orphan
+#   T_WEEKEND  seq 'abc' non-numeric sequence    -> DQ-08 bad stop_sequence
+#
+# That last row is the important one. SQLite's CAST does NOT fail on garbage:
+# CAST('abc' AS INTEGER) is 0, not NULL. So a rule that tests the cast result
+# for NULL catches nothing, and the row loads with stop_sequence = 0 — which
+# makes it the trip's FIRST call and silently changes the origin that Q3 is
+# built on. The rule has to inspect the raw text, and this row proves it does.
 STOP_TIMES = """\
 arrival_time,departure_time,drop_off_type,pickup_type,shape_dist_traveled,stop_headsign,stop_id,stop_sequence,trip_id
 07:00:00,07:00:00,1,0,,"",P_CENTRAL_1,1,T_MORNING
@@ -122,9 +129,10 @@ arrival_time,departure_time,drop_off_type,pickup_type,shape_dist_traveled,stop_h
 23:40:00,23:40:00,1,0,,"",P_CENTRAL_1,1,T_WEEKEND
 24:10:00,24:10:00,0,1,,"",P_NORTH_1,2,T_WEEKEND
 09:00:00,09:00:00,1,1,,"",P_CENTRAL_NONE,1,T_BUS
-87:16:00,87:16:00,0,1,,"",P_NORTH_1,3,T_MORNING
+87:39:00,87:39:00,0,1,,"",P_NORTH_1,3,T_MORNING
 10:00:00,10:00:00,0,0,,"",P_CENTRAL_1,1,T_GHOST
 11:00:00,11:00:00,0,0,,"",P_NOWHERE,4,T_MORNING
+06:00:00,06:00:00,0,0,,"",P_CENTRAL_1,abc,T_WEEKEND
 """
 
 TRANSFERS = """\
@@ -163,9 +171,10 @@ FILES = {
 #:       10       8            2  service_dates: 1 duplicate (DQ-05),
 #:                                1 unknown service (DQ-04)
 #:        5       4            1  trips: T_ORPHAN_ROUTE (DQ-09)
-#:       11       7            4  stop_times: 1 duplicate call (DQ-05),
-#:                                1 at 87:16:00 (DQ-03), 1 unknown trip and
-#:                                1 unknown stop (DQ-04)
+#:       12       7            5  stop_times: 1 duplicate call (DQ-05),
+#:                                1 at 87:39:00 (DQ-03), 1 unknown trip and
+#:                                1 unknown stop (DQ-04), 1 non-numeric
+#:                                stop_sequence (DQ-08)
 EXPECTED = {
     "stations": 2,
     "platforms": 5,

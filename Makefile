@@ -25,7 +25,7 @@ ANALYSIS_SQL  := $(wildcard sql/analysis/*.sql)
 SQL_FILES     := $(SCHEMA_SQL) $(ANALYSIS_SQL)
 
 .DEFAULT_GOAL := help
-.PHONY: help setup all fetch build rebuild verify analyse poll benchmark \
+.PHONY: help setup setup-dashboard setup-dev all fetch build rebuild verify analyse poll benchmark \
         dashboard info clean clean-db clean-output test lint sqlfmt-check \
         api-key
 
@@ -40,12 +40,19 @@ help:  ## show this help
 	@echo "Typical first run:  make setup && make all"
 
 # ---------------------------------------------------------------------------
-setup:  ## install the pipeline dependencies
-	$(PYTHON) -m pip install -r requirements.txt
+setup:  ## install the pipeline and the `railpulse` command
+	# Editable install rather than plain `pip install -r requirements.txt`:
+	# the package lives in src/, so without installing it `python -m railpulse`
+	# fails with "No module named railpulse" for anyone not going through make.
+	# This makes the bare `railpulse <command>` form in the docs actually work.
+	$(PYTHON) -m pip install -e .
 
 setup-dashboard:  ## install the optional dashboard + browser-automation extras
-	$(PYTHON) -m pip install -r requirements-dashboard.txt
+	$(PYTHON) -m pip install -e ".[dashboard,portal]"
 	$(PYTHON) -m playwright install chromium
+
+setup-dev:  ## install everything, including pytest
+	$(PYTHON) -m pip install -e ".[dashboard,portal,dev]"
 
 # ---------------------------------------------------------------------------
 all: build verify analyse  ## fetch, build, verify and analyse — the whole thing

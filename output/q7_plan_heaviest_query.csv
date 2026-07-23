@@ -1,0 +1,7 @@
+id,parent,notused,detail
+2,0,0,CO-ROUTINE trip_days
+10,2,0,SCAN t USING INDEX sqlite_autoindex_trip_1
+13,2,0,SEARCH sd USING PRIMARY KEY (service_id=?)
+54,0,0,SCAN td
+57,0,0,SEARCH st USING INDEX sqlite_autoindex_stop_time_1 (trip_id=?)
+65,0,0,USE TEMP B-TREE FOR GROUP BY

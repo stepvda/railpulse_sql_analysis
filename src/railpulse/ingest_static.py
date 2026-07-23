@@ -5,8 +5,8 @@ THE ONE RULE THIS MODULE OBEYS
 It copies. It does not think.
 
 Not a single value is inspected, cast, trimmed, filtered, defaulted or
-reordered here. A cell that reads ``"87:16:00"`` in the file arrives in the
-staging table as the string ``"87:16:00"``. Whether that is a valid departure
+reordered here. A cell that reads ``"87:39:00"`` in the file arrives in the
+staging table as the string ``"87:39:00"``. Whether that is a valid departure
 time is a question for ``sql/03_transform.sql``, which can quarantine the row
 with an explanation — something a Python-side ``if`` could only do by throwing
 information away.

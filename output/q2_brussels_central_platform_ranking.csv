@@ -1,0 +1,7 @@
+rank_annualised,rank_timetabled,platform,annual_departures,pct_of_station,timetabled_calls,routes_served,distinct_destinations,first_departure,last_departure
+1,2,Platform 4,63426,20.4,10515,163,34,00:48:00,24:34:00
+2,1,Platform 3,62276,20.0,11982,179,44,00:34:00,24:32:00
+3,3,Platform 2,56874,18.3,7471,116,28,00:18:00,25:07:00
+4,4,Platform 1,52561,16.9,6781,108,28,00:34:00,24:44:00
+5,5,Platform 5,40639,13.1,6191,92,27,00:40:00,24:26:00
+6,6,Platform 6,35548,11.4,5740,89,26,00:48:00,25:18:00

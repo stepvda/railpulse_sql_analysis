@@ -134,10 +134,16 @@ class BelgianMobilityClient:
                 )
             except requests.RequestException as exc:
                 last_error = exc
-                backoff = min(2 ** attempt, 60)
-                print(f"    attempt {attempt}/{self.max_retries} failed ({exc}); "
-                      f"retrying in {backoff}s")
-                time.sleep(backoff)
+                # Only sleep if another attempt will actually follow. Sleeping
+                # after the final failure just delays the exception by up to a
+                # minute for no benefit.
+                if attempt < self.max_retries:
+                    backoff = min(2 ** attempt, 60)
+                    print(f"    attempt {attempt}/{self.max_retries} failed "
+                          f"({exc}); retrying in {backoff}s")
+                    time.sleep(backoff)
+                else:
+                    print(f"    attempt {attempt}/{self.max_retries} failed ({exc})")
                 continue
 
             if response.status_code not in self.RETRYABLE_STATUSES:
@@ -146,8 +152,12 @@ class BelgianMobilityClient:
                 return response
 
             # Retryable. Prefer the server's own Retry-After over our guess.
-            retry_after = response.headers.get("Retry-After")
-            backoff = _parse_retry_after(retry_after) or min(2 ** attempt, 60)
+            # `is None` rather than a truthiness test on purpose: "Retry-After: 0"
+            # is a valid instruction meaning "retry immediately", and `or` would
+            # silently discard it in favour of exponential backoff.
+            server_backoff = _parse_retry_after(response.headers.get("Retry-After"))
+            backoff = (server_backoff if server_backoff is not None
+                       else min(2 ** attempt, 60))
             print(f"    HTTP {response.status_code} from API "
                   f"(attempt {attempt}/{self.max_retries}); backing off {backoff:0.0f}s")
             last_error = requests.HTTPError(
@@ -244,15 +254,46 @@ class BelgianMobilityClient:
         )
 
 
+#: Never sleep longer than this on a server's instruction. A misconfigured
+#: proxy that answers `Retry-After: <a date three months out>` would otherwise
+#: park the ingestion job until the heat death of the sprint.
+MAX_SERVER_BACKOFF_SECONDS = 300.0
+
+
 def _parse_retry_after(value: str | None) -> float | None:
-    """Interpret a ``Retry-After`` header (delta-seconds or HTTP-date)."""
-    if not value:
+    """Interpret a ``Retry-After`` header, or return None if it is unusable.
+
+    The header comes in two RFC-9110 forms — delta-seconds (``120``) or an
+    HTTP-date (``Wed, 21 Oct 2026 07:28:00 GMT``) — and this has to survive
+    both, plus whatever a broken intermediary invents.
+
+    Two things worth knowing about the implementation:
+
+    * ``email.utils.parsedate_to_datetime`` **raises** ``ValueError`` on
+      unparseable input in Python 3.10+ (it returned ``None`` in older
+      versions). Letting that propagate would turn a cosmetically malformed
+      header into a crashed ingestion run, so it is caught.
+    * The result is capped at :data:`MAX_SERVER_BACKOFF_SECONDS`. We honour the
+      server's wishes, but not to the point of hanging indefinitely.
+
+    Returns ``None`` when there is no usable instruction, which the caller
+    distinguishes from a legitimate ``0`` ("retry immediately").
+    """
+    if value is None:
         return None
     value = value.strip()
+    if not value:
+        return None
+
     if value.isdigit():
-        return float(value)
-    parsed = email.utils.parsedate_to_datetime(value)
+        return min(float(value), MAX_SERVER_BACKOFF_SECONDS)
+
+    try:
+        parsed = email.utils.parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
     if parsed is None:
         return None
+
     delta = parsed.timestamp() - time.time()
-    return max(delta, 0.0)
+    return min(max(delta, 0.0), MAX_SERVER_BACKOFF_SECONDS)

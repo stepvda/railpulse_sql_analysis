@@ -6,6 +6,8 @@ constraint below was read back from the built database with
 DDL, so it describes what was actually created and not what was intended. It is
 still a static file: re-check it against the database after a schema change.
 
+> ⓘ **Unfamiliar with a term used here?** [`glossary.md`](glossary.md) defines every GTFS, database and project-specific word this project uses, with examples from this data.
+
 Source: SNCB/NMBS GTFS Static, feed version `2026-07-20`, timetable window
 `2025-12-20` to `2026-12-12` (358 distinct operating dates), `feed_lang = 'fr'`.
 `PRAGMA foreign_key_check` returns no rows.
@@ -439,13 +441,15 @@ The link is soft but intended to be *measured*, not soft and ignored:
 - `v_rt_departure_performance` `INNER JOIN`s `rt_trip_update` to `trip`, so any
   punctuality query silently and correctly excludes unmatched rows instead of
   reporting delays against a trip it cannot describe.
-- The match rate is meant to be reported as a post-build check, listed as
-  `railpulse.verify` in the module map in `src/railpulse/__init__.py`. That
-  module is not written yet, so the figure is not published anywhere. Every
-  real-time `trip_id` recorded so far does resolve against the static feed, but
-  those snapshots were polled within hours of a rebuild, which is precisely the
-  case a hard foreign key would also have survived; it says nothing about the
-  drift window this design exists to cover.
+- The match rate is reported as a post-build check by `railpulse verify`
+  (`src/railpulse/verify.py`), which currently returns **100%** — every
+  real-time `trip_id` recorded resolves against the static feed. Read that
+  number with care: those snapshots were polled within hours of a rebuild,
+  which is precisely the case a hard foreign key would also have survived. It
+  confirms the join works; it says nothing yet about the drift window this
+  design exists to cover. The check is a warning rather than an error, and
+  trips below 80% on purpose — a low match rate means the static feed is stale
+  and should be rebuilt, not that the pipeline is broken.
 
 Inside the real-time model the constraints are hard: `rt_stop_time_update`,
 `rt_alert_text`, `rt_alert_informed_entity` and `rt_alert_active_period` all

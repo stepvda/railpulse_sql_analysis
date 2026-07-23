@@ -68,6 +68,36 @@ DEFAULT_SUBSCRIPTION_NAME = "railpulse-sql-analysis"
 PRODUCT = "Standard"
 
 
+def _load_dotenv() -> None:
+    """Load ``.env`` from the repository root into ``os.environ``.
+
+    Prefers python-dotenv (a pipeline dependency, so normally present), and
+    falls back to a small parser so this script still works in a bare
+    environment where only Playwright was installed. Values already present in
+    the real environment always win — an explicit ``export`` should override
+    the file, not the other way round.
+    """
+    env_path = SCRIPT_DIR.parent / ".env"
+    if not env_path.exists():
+        return
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(env_path)
+        return
+    except ImportError:
+        pass
+
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key, value = key.strip(), value.strip().strip("'\"")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
 def _shot(page: Page, name: str, enabled: bool) -> None:
     if not enabled:
         return
@@ -202,11 +232,21 @@ def main(argv: list[str] | None = None) -> int:
                         help="save screenshots of each step to scripts/.shots/")
     args = parser.parse_args(argv)
 
+    # .env.example tells the user to put BMC_EMAIL / BMC_PASSWORD in .env, so
+    # this script has to actually read .env — os.environ alone would never see
+    # them and `make api-key` would fail with "credentials must be set" while
+    # the credentials sat right there in the file the docs pointed at.
+    _load_dotenv()
+
     email = os.environ.get("BMC_EMAIL", "").strip()
     password = os.environ.get("BMC_PASSWORD", "").strip()
     if not email or not password:
         return _fail(
             "BMC_EMAIL and BMC_PASSWORD must be set.\n"
+            "Either put them in .env at the repository root:\n"
+            "  BMC_EMAIL=you@example.com\n"
+            "  BMC_PASSWORD=...\n"
+            "or export them into the environment:\n"
             "  export BMC_EMAIL=you@example.com\n"
             "  export BMC_PASSWORD='...'\n"
             f"Register first at {PORTAL}/signup if you have no account."

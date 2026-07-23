@@ -19,7 +19,34 @@ migration, Power BI, GenAI text-to-SQL) are out of scope for this repository.
 | **Scale** | 2,165,507 calls · 134,809 trips · 4,697,139 service days · 1,801 routes · 652 stations |
 | **Engine** | SQLite 3.45 · strict foreign keys · WAL |
 | **Build time** | ~97 s from zip to indexed, verified database |
-| **Licence (data)** | CC BY 4.0 — *NMBS/SNCB – Open Data – 2026-07-20* |
+| **Licence (data)** | CC BY 4.0 — *NMBS-SNCB – Open Data – 2026-07-20* |
+
+> 🆕 **New to transit data or to database jargon?**
+> Start with **[`docs/glossary.md`](docs/glossary.md)**. It defines every term
+> this project uses — GTFS, trip, headsign, service calendar, stop_time, 3NF,
+> SARGable, fact table, window function, and the project's own vocabulary like
+> *annualised departures* and *boardable call* — with examples from this data.
+> It is written to be read top to bottom as a primer, not just looked up.
+
+---
+
+## 🧭 What is this, in plain terms?
+
+Belgium's national railway publishes its entire timetable as open data, in a
+worldwide standard format called **GTFS** — which in practice is a ZIP file
+containing ten CSV files. It is a *plan*: 2.17 million scheduled stops across a
+year, with no types, no constraints and no guarantees that anything references
+anything else.
+
+This project turns that ZIP into a real relational database — one where a train
+cannot reference a station that does not exist, where every cleaning decision is
+written down, and where five operational questions can be answered in SQL and
+defended.
+
+The interesting part is not the SQL. It is that **the two most obvious queries
+give confidently wrong answers**, for reasons that are properties of the data
+rather than mistakes in the code. Finding that out, and reporting it honestly,
+is most of the work. See [The answers](#-the-answers) below.
 
 ---
 
@@ -222,8 +249,8 @@ SQL; every rule lives in a `.sql` file.**
                                                         output/*.csv + report + dashboard
 ```
 
-Python never inspects a value. A cell reading `"87:16:00"` lands in staging as
-the string `"87:16:00"`; whether that is a plausible departure is a question for
+Python never inspects a value. A cell reading `"87:39:00"` lands in staging as
+the string `"87:39:00"`; whether that is a plausible departure is a question for
 [`03_transform.sql`](sql/03_transform.sql), which quarantines it into
 `rejected_row` **with a reason** — something a Python `if` could only do by
 throwing the information away.
@@ -242,7 +269,7 @@ railpulse_sql_analysis/
 ├── sql/                          ← every rule and every metric lives here
 ├── src/railpulse/                ← the thin Python layer that runs the SQL
 ├── scripts/                      ← operational scripts (cron poller, API-key setup)
-├── tests/                        ← 53 tests over a synthetic broken feed
+├── tests/                        ← 103 tests over a synthetic broken feed
 ├── dashboard/                    ← Streamlit report layer
 ├── docs/                         ← ERD, data dictionary, reports, ADRs
 ├── output/                       ← generated: one CSV per analysis query
@@ -283,16 +310,34 @@ Numbered files run in order during a build; `analysis/` is read-only and runs af
 | `05_views.sql` | The semantic layer. `v_departure` defines what "a departure" means *once*, so five analysts cannot re-derive it five slightly different ways. Also `v_trip_service_days` (the annualisation weight), `v_trip_origin`, `v_service_frequency`, `v_trip_amenity`, `v_station_daily_departures`. |
 | `06_realtime.sql` | GTFS-RT landing tables. `CREATE TABLE IF NOT EXISTS` on purpose: the static feed is re-downloadable, but a delay observed at 06:12 is gone forever, so these survive a rebuild. |
 | `07_cleanup.sql` | Drops staging once the transform has succeeded (~400 MB of the database). `--keep-staging` retains it for debugging. |
-| `analysis/q1…q7_*.sql` | The answers: 47 labelled, individually documented queries. Q1–Q5 are the graded questions; Q6 is the hub leaderboard and Q7 the index-optimisation evidence. |
+
+### `sql/analysis/` — the answers
+
+47 labelled queries across seven files. Every one carries an `-- @label:`,
+`-- @title:` and `-- @description:` block, which is how `railpulse analyse`
+names its CSV output and how every figure in the report can be traced back to
+the exact statement that produced it.
+
+| File | Question | Queries |
+|---|---|---:|
+| [`q1_peak_hour.sql`](sql/analysis/q1_peak_hour.sql) | Which hour carries the most scheduled departures? | 5 |
+| [`q2_platform_bottlenecks.sql`](sql/analysis/q2_platform_bottlenecks.sql) | The three busiest platforms at Bruxelles-Central | 6 |
+| [`q3_morning_destinations.sql`](sql/analysis/q3_morning_destinations.sql) | Top terminal destinations for trips departing before 12:00 | 5 |
+| [`q4_service_frequency.sql`](sql/analysis/q4_service_frequency.sql) | Weekly frequency class per service, and the % in each | 6 |
+| [`q5_accessibility_audit.sql`](sql/analysis/q5_accessibility_audit.sql) | Amenity ratio per route, and the worst-scoring routes | 7 |
+| [`q6_network_leaderboard.sql`](sql/analysis/q6_network_leaderboard.sql) | *Nice-to-have:* the five main hubs compared, structurally and on live punctuality | 8 |
+| [`q7_index_optimisation.sql`](sql/analysis/q7_index_optimisation.sql) | *Nice-to-have:* `EXPLAIN QUERY PLAN` evidence for every index | 10 |
+
 
 ### `tests/`, `scripts/`, `dashboard/`
 
 | File | What it does |
 |---|---|
 | `tests/conftest.py` | A hand-written miniature GTFS feed **engineered to be broken in known ways** — one violation per DQ rule, columns in alphabetical order like the real feed, and all-zero calendar flags. Testing against the real feed proves the pipeline runs; this proves the rules *fire*. |
-| `tests/test_transform.py` | 27 tests: that good rows survive, that derived columns are right (24:10 → hour 0, `day_offset` 1), and that each rule quarantines exactly what it should. |
-| `tests/test_views_and_analysis.py` | 26 tests: the view definitions, plus every analysis query prepared and executed against the fixture — so a renamed column fails in 0.25 s rather than 3 minutes into a real run. |
-| `scripts/poll_realtime.sh` | Cron/launchd-ready wrapper around `railpulse poll`. Documents why 15 minutes is the right interval against a 100 requests/day quota. |
+| `tests/test_transform.py` | 24 tests: that good rows survive, that derived columns are right (24:10 → hour 0, `day_offset` 1), and that each DQ rule quarantines exactly what it should — no more, no less. |
+| `tests/test_views_and_analysis.py` | 29 tests: the view definitions pinned down, plus every analysis query prepared and executed against the fixture — so a renamed column fails in under a second rather than 3 minutes into a real run. |
+| `tests/test_api_client.py` | 36 tests: the retry and rate-limit edge cases. Each one pins a defect found by inspection — a malformed `Retry-After` that used to raise, a `Retry-After: 0` that used to be read as "no instruction", an unbounded backoff, and the guarantee that the API key is never printed. |
+| `scripts/poll_realtime.sh` | Cron/launchd-ready wrapper around `railpulse poll`. Carries the quota arithmetic: each run costs **2** requests (trip-update + alert), so `*/30` is 96 requests/day — the fastest cadence that fits the anonymous 100/day ceiling. `*/15` would be 192/day and is over it. |
 | `scripts/setup_api_key.py` | Drives the developer portal in a headless browser to create the free "Standard" subscription and print the key. A script fails loudly when the portal is restyled; a paragraph of README prose just silently rots. |
 | `dashboard/app.py` | The Streamlit report. Loads labelled query blocks straight out of `sql/analysis/*.sql` and runs them unchanged, so the dashboard and the graded SQL cannot drift apart. Opens the database read-only. |
 
@@ -302,17 +347,37 @@ Numbered files run in order during a build; `analysis/` is read-only and runs af
 
 ```bash
 git clone <this-repo> && cd railpulse_sql_analysis
-make setup                              # requests + python-dotenv, nothing else
+
+python3 -m venv .venv && source .venv/bin/activate    # recommended
+make setup                              # editable install: requests + python-dotenv
 
 cp .env.example .env
 $EDITOR .env                            # add BMC_API_KEY
 
 make all                                # fetch → build → verify → analyse  (~3 min)
-make dashboard                          # optional Streamlit report
 ```
 
-`make help` lists everything. The database (~1 GB) is git-ignored because it is
-fully reproducible from the feed.
+`make help` lists everything.
+
+**Before you start, know what you are committing to:**
+
+| | |
+|---|---|
+| First run downloads | **26 MB** (the GTFS feed) |
+| Build takes | **~2–3 minutes** |
+| Database ends up | **~1 GB** (git-ignored — it rebuilds from the feed) |
+| Peak disk during build | **~1.5 GB** (staging is dropped and the file is compacted at the end) |
+| Python | **3.10+** |
+
+`make setup` runs `pip install -e .`, which is what makes the bare `railpulse`
+command work. The package lives in `src/`, so without installing it
+`python -m railpulse` fails with *No module named railpulse* — every command
+below assumes you ran `make setup` first.
+
+```bash
+make dashboard                          # optional Streamlit report
+make setup-dashboard                    # …installs streamlit/pandas/altair first
+```
 
 ### Getting an API key
 
@@ -338,7 +403,7 @@ endpoint list, quota arithmetic and licence terms:
 | `make poll` | Append one GTFS-Realtime snapshot |
 | `make benchmark` | Measure index and SARGability effects |
 | `make info` | What is loaded, from when, how clean |
-| `make test` | 53 tests, 0.25 s |
+| `make test` | 103 tests, under a second |
 
 ---
 
@@ -349,7 +414,7 @@ is dropped silently — a rejected row lands in `rejected_row` with its rule, it
 reason, its source file and its **physical line number**.
 
 Of 2,165,519 staged calls, **12 were quarantined** (`DQ-03`: published at
-48:00:00 or later, up to `87:16:00`) and 2,165,507 loaded.
+48:00:00 or later, up to `87:39:00`) and 2,165,507 loaded.
 `PRAGMA foreign_key_check` returns clean.
 
 Three findings shaped the whole analysis:
@@ -357,7 +422,7 @@ Three findings shaped the whole analysis:
 | Finding | Consequence |
 |---|---|
 | `calendar.txt` weekday flags are **all zero** for all 51,593 services; the real calendar is 4.7M rows in `calendar_dates.txt` | Q4 cannot use the GTFS weekly pattern — it is derived instead ([`v_service_frequency`](sql/05_views.sql)) |
-| **577,000 calls are technical pass-throughs** (`pickup_type = 1 AND drop_off_type = 1`) | Counting them as departures would inflate every station by ~27%; `v_departure` excludes them |
+| **577,462 calls are technical pass-throughs** (`pickup_type = 1 AND drop_off_type = 1`) | Counting them as departures inflates the network by **49%**, and unevenly — 74.2% at Anvers-Central vs 0.1% at Bruxelles-Central, so it reorders hubs rather than scaling them. `v_departure` excludes them |
 | **31,154 calls use GTFS times ≥ 24:00:00** | Raw text preserved, plus `departure_secs` / `departure_hour` / `day_offset` so an 00:10 departure counts in hour 0, not a fictional hour 24 |
 
 Full report with the query behind every number:
@@ -419,6 +484,7 @@ you did — is the job. Every answer in this repository shows both.
 
 | Document | Contents |
 |---|---|
+| [`docs/glossary.md`](docs/glossary.md) | **Start here if any term is unfamiliar.** Every GTFS, database and project-specific word defined, with examples from this data |
 | [`docs/analysis_report.md`](docs/analysis_report.md) | The client-facing report — findings, method, recommendations |
 | [`docs/analysis_results.md`](docs/analysis_results.md) | Verbatim output of all 47 queries, with their SQL |
 | [`docs/erd.md`](docs/erd.md) | Full ERD, relationship table, drawDB import |
@@ -430,7 +496,20 @@ you did — is the job. Every answer in this repository shows both.
 
 ---
 
-<sub>Data: **NMBS/SNCB – Open Data – 2026-07-20**, licensed
+## ⚖️ Licence
+
+Code, SQL and documentation: **MIT** — see [`LICENSE`](LICENSE).
+
+The **data** is separately licensed and the MIT licence does not cover it. It
+comes from the Belgian Mobility Open Data portal under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), and any
+redistribution must carry the publisher's required attribution string:
+
+> NMBS-SNCB – Open Data – 2026-07-20
+
+---
+
+<sub>Data: **NMBS-SNCB – Open Data – 2026-07-20**, licensed
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), retrieved from the
 [Belgian Mobility Open Data portal](https://data.belgianmobility.io/).
 This project is not affiliated with or endorsed by SNCB/NMBS.</sub>

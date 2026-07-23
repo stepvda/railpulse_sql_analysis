@@ -1,0 +1,6 @@
+station_name,numbered_platforms,timetabled_calls,annual_departures,calls_per_platform,pressure_rank
+Bruxelles-Central,6,48680,311324,8113.0,1
+Bruxelles-Nord,13,48259,309765,3712.0,2
+Bruxelles-Midi,21,43790,283415,2085.0,3
+Gand-Saint-Pierre,11,18848,149864,1713.0,4
+Anvers-Central,16,13198,131812,825.0,5

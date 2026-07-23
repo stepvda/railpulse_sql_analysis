@@ -1,0 +1,6 @@
+leaderboard_position,station_name,composite_score,connectivity_score,headroom_score,smoothness_score,destinations,calls_per_platform,peak_concentration_pct
+1,Bruxelles-Midi,74.7,100.0,82.7,41.3,103,2085.0,6.2
+2,Anvers-Central,68.9,6.7,100.0,100.0,61,825.0,6.0
+3,Bruxelles-Nord,65.3,97.8,60.4,37.6,102,3712.0,6.2
+4,Bruxelles-Central,43.7,95.6,0.0,35.5,101,8113.0,6.3
+5,Gand-Saint-Pierre,29.3,0.0,87.8,0.0,58,1713.0,6.4

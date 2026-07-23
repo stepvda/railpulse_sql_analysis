@@ -33,10 +33,38 @@
 -- ===========================================================================
 -- Reference tables for the GTFS-RT enumerations.
 -- ===========================================================================
+-- ---------------------------------------------------------------------------
+-- ⚠ GTFS-Realtime DEFINES *TWO DIFFERENT* ScheduleRelationship ENUMS, AND THEY
+--   COLLIDE ON THE SAME INTEGERS. This is the single easiest way to publish a
+--   badly wrong punctuality figure, so it gets two tables, not one.
+--
+--     code   TripDescriptor (trip level)   StopTimeUpdate (stop level)
+--     ----   -------------------------     ---------------------------
+--       0    SCHEDULED                     SCHEDULED
+--       1    ADDED                         SKIPPED      <- the real cancellation
+--       2    UNSCHEDULED                   NO_DATA      <- NOT a cancellation
+--       3    CANCELED                      UNSCHEDULED
+--
+--   Reading stop-level 2 as "cancelled" is wrong and the error is large: in the
+--   snapshots collected here, 12 703 calls carry code 2 (the operator simply
+--   has no prediction for them) against 48 that carry code 1 and are genuinely
+--   skipped. Conflating the two overstates cancellations by a factor of ~265
+--   and quietly removes 12 703 calls from the punctuality denominator.
+-- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS ref_schedule_relationship (
     code        INTEGER PRIMARY KEY,
     label       TEXT NOT NULL,
     description TEXT NOT NULL
+);
+
+--: Stop-level vocabulary. Deliberately a separate table from the trip-level one
+--: above, because the same integer means something different at each level.
+CREATE TABLE IF NOT EXISTS ref_stop_schedule_relationship (
+    code        INTEGER PRIMARY KEY,
+    label       TEXT NOT NULL,
+    description TEXT NOT NULL,
+    --: 1 only for the code that means "this call will not happen".
+    is_cancellation INTEGER NOT NULL CHECK (is_cancellation IN (0, 1))
 );
 
 CREATE TABLE IF NOT EXISTS ref_alert_cause (
@@ -95,9 +123,9 @@ CREATE TABLE IF NOT EXISTS rt_trip_update (
 -- ---------------------------------------------------------------------------
 -- `delay` is signed seconds against the published timetable, which is exactly
 -- the metric the client asked for. Note that ~55 % of calls in a typical
--- snapshot carry schedule_relationship = 2 (SKIPPED) with no time at all —
--- those are cancellations, not zero-delay departures, and every query below
--- separates them.
+-- snapshot carry schedule_relationship = 2 (NO_DATA — no prediction, NOT a
+-- cancellation) with no time at all. Genuine cancellations are code 1
+-- (SKIPPED), and there are far fewer of them. Every query below separates the three.
 -- ===========================================================================
 CREATE TABLE IF NOT EXISTS rt_stop_time_update (
     snapshot_id           INTEGER NOT NULL,
@@ -189,14 +217,25 @@ CREATE INDEX IF NOT EXISTS ix_rt_snapshot_feed_time
 -- ===========================================================================
 -- Reference data (GTFS-Realtime v2.0 enumerations)
 -- ===========================================================================
+-- TRIP-level vocabulary (rt_trip_update.schedule_relationship).
 INSERT OR IGNORE INTO ref_schedule_relationship (code, label, description) VALUES
     (0, 'SCHEDULED',   'Running in accordance with its GTFS schedule'),
     (1, 'ADDED',       'An extra trip, not in the static feed'),
-    (2, 'UNSCHEDULED', 'Running with no schedule (trip level) / SKIPPED (stop level)'),
+    (2, 'UNSCHEDULED', 'Running with no schedule associated to it'),
     (3, 'CANCELED',    'Previously scheduled, now cancelled'),
     (5, 'REPLACEMENT', 'Replaces a previously scheduled trip'),
     (6, 'DUPLICATED',  'A duplicate of an existing trip'),
     (7, 'DELETED',     'Should not be shown to passengers at all');
+
+-- STOP-level vocabulary (rt_stop_time_update.schedule_relationship).
+-- Note how 1 and 2 mean the opposite sort of thing from their trip-level
+-- namesakes. Only code 1 is a cancellation.
+INSERT OR IGNORE INTO ref_stop_schedule_relationship
+    (code, label, description, is_cancellation) VALUES
+    (0, 'SCHEDULED',   'Vehicle will call here; times are as predicted',            0),
+    (1, 'SKIPPED',     'This call will NOT happen — the stop is being skipped',     1),
+    (2, 'NO_DATA',     'No prediction available for this call. The train is still expected to run; the operator simply has nothing to say about it yet. NOT a cancellation.', 0),
+    (3, 'UNSCHEDULED', 'Call belongs to a trip running without a schedule',         0);
 
 INSERT OR IGNORE INTO ref_alert_cause (code, label) VALUES
     (1, 'UNKNOWN_CAUSE'), (2, 'OTHER_CAUSE'), (3, 'TECHNICAL_PROBLEM'),
@@ -268,11 +307,19 @@ SELECT
     o.arrival_delay_s,
     o.schedule_relationship,
     o.fetched_at_utc,
-    CASE WHEN o.schedule_relationship = 2 THEN 1 ELSE 0 END AS is_skipped,
+    ssr.label AS stop_status,
+    -- Stop-level code 1 = SKIPPED. This call will not happen.
+    COALESCE(ssr.is_cancellation, 0) AS is_skipped,
+    -- Stop-level code 2 = NO_DATA. The train is still expected; the operator
+    -- has no prediction. Reported in its own column so it can never be
+    -- mistaken for a cancellation (it was, once — see the header of this file).
+    CASE WHEN o.schedule_relationship = 2 THEN 1 ELSE 0 END AS has_no_data,
     CASE
-        WHEN o.schedule_relationship = 2        THEN NULL   -- cancelled: no verdict
-        WHEN o.departure_delay_s IS NULL        THEN NULL
-        WHEN o.departure_delay_s < 120          THEN 1
+        -- Skipped: the call is cancelled, so punctuality has no meaning.
+        WHEN COALESCE(ssr.is_cancellation, 0) = 1 THEN NULL
+        -- Covers NO_DATA implicitly: those rows carry no delay reading at all.
+        WHEN o.departure_delay_s IS NULL          THEN NULL
+        WHEN o.departure_delay_s < 120            THEN 1
         ELSE 0
     END AS is_on_time
 FROM observations o
@@ -283,4 +330,6 @@ LEFT JOIN station  st ON st.station_id = p.station_id
 LEFT JOIN stop_time sched
        ON sched.trip_id       = o.trip_id
       AND sched.stop_sequence = o.stop_sequence
+LEFT JOIN ref_stop_schedule_relationship ssr
+       ON ssr.code = o.schedule_relationship
 WHERE o.observation_rank = 1;

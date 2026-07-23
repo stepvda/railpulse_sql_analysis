@@ -288,6 +288,15 @@ WITH parsed AS (
         TRIM(st.trip_id)                          AS trip_id,
         TRIM(st.stop_id)                          AS stop_id,
         CAST(TRIM(st.stop_sequence) AS INTEGER)   AS stop_sequence,
+        -- Whether that CAST was actually meaningful. SQLite's CAST does not
+        -- fail on garbage: CAST('abc' AS INTEGER) is 0, not NULL. So testing
+        -- the cast result for NULL detects nothing, and a corrupt
+        -- stop_sequence would load as 0 — silently becoming the trip's FIRST
+        -- call and changing the origin that Q3 is built on. The raw text has
+        -- to be inspected instead, which is what this GLOB does.
+        CASE WHEN TRIM(COALESCE(st.stop_sequence, '')) <> ''
+              AND TRIM(st.stop_sequence) NOT GLOB '*[^0-9]*'
+             THEN 1 ELSE 0 END                    AS stop_sequence_is_valid,
         NULLIF(TRIM(st.arrival_time), '')         AS arrival_time,
         NULLIF(TRIM(st.departure_time), '')       AS departure_time,
         CASE WHEN LENGTH(TRIM(st.arrival_time)) = 8
@@ -323,12 +332,12 @@ SELECT
     CASE
         WHEN s.fk_trip     IS NULL THEN 'DQ-04-ORPHAN-STOP-TIME-TRIP'
         WHEN s.fk_platform IS NULL THEN 'DQ-04-ORPHAN-STOP-TIME-PLATFORM'
-        WHEN s.stop_sequence IS NULL THEN 'DQ-08-BAD-STOP-SEQUENCE'
+        WHEN s.stop_sequence_is_valid = 0 THEN 'DQ-08-BAD-STOP-SEQUENCE'
         WHEN s.departure_secs IS NULL AND s.arrival_secs IS NULL
              THEN 'DQ-08-NO-TIME'
         -- DQ-03: GTFS permits times past 24:00:00 for trips crossing midnight,
         -- but a *rail* call 48 h into its own service day is not a timetable,
-        -- it is a data error. 12 rows in this feed (up to 87:16:00).
+        -- it is a data error. 12 rows in this feed (up to 87:39:00).
         WHEN COALESCE(s.departure_secs, s.arrival_secs) >= 172800
              THEN 'DQ-03-IMPLAUSIBLE-DEPARTURE'
         WHEN s.dup_rank > 1 THEN 'DQ-05-DUPLICATE-CALL'

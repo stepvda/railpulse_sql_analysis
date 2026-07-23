@@ -150,14 +150,28 @@ security mistake and a terms violation.
 
 ### 2.2 Automating steps 2-6
 
-`.env.example` reserves `BMC_EMAIL` and `BMC_PASSWORD` for a
-`scripts/setup_api_key.py` that would drive the same browser flow with
-Playwright for an account that already exists and print the resulting primary
-key. **That script is not in the repository as of 2026-07-23** — only the
-environment variables and the commented-out `playwright>=1.44` line in
-`requirements.txt` exist. The subscription for this project was created by hand
-in a browser, which is entirely equivalent; the automation is a convenience
-that was never needed, and nothing in the pipeline depends on it.
+`scripts/setup_api_key.py` automates steps 2-6. It reads `BMC_EMAIL` and
+`BMC_PASSWORD` from the environment (never from a command-line argument, which
+would land in your shell history), drives the portal in a headless Chromium via
+Playwright, selects the **Standard** product, names and creates the
+subscription, and prints the resulting primary key:
+
+```bash
+make setup-dashboard          # installs playwright + the browser
+export BMC_EMAIL=you@example.com
+export BMC_PASSWORD='...'
+make api-key                  # or: python scripts/setup_api_key.py --headed
+```
+
+It does **not** create the account — sign-up needs a confirmation link sent by
+email, so register once at `/signup` first. It never writes the key to disk; it
+prints it and you decide where it goes. `--headed` shows the browser and
+`--screenshots` saves each step to `scripts/.shots/`, which is the fastest way
+to diagnose a portal redesign.
+
+The subscription used for this project (`railpulse-sql-analysis`, Standard
+tier) was created by exactly this script. Nothing in the pipeline depends on
+it — a key obtained by clicking through the portal by hand is identical.
 
 ### 2.3 Tiers
 
@@ -268,14 +282,17 @@ key, every 45 minutes without one.**
   refreshes every 30 seconds, and `rt_snapshot`'s uniqueness constraint would
   discard the duplicates anyway.
 
-`scripts/poll_realtime.sh` ships with a `*/15 * * * *` crontab line. That is the
-Standard-key recommendation, and an anonymous caller must change it, because
-15-minute polling is 192 real-time requests a day against a ceiling of 100.
+`scripts/poll_realtime.sh` ships with a `*/30 * * * *` crontab line, and its
+header now carries the full table above.
 
-Note that the script's own header comment puts 15-minute polling at "96
-requests/day … just inside the anonymous ceiling". That arithmetic counts polls,
-not requests: each poll is two requests, so the true figure is 192. The comment
-in the script is wrong; this table is right.
+An earlier version of the script shipped `*/15` and described it as "96
+requests/day … just inside the anonymous ceiling". That arithmetic counted
+**polls, not requests**: each poll is two requests (trip-update + alert), so the
+true figure was 192/day — 192% of the anonymous quota, and precisely the
+"blocked" outcome the brief warns about. The default is now `*/30` (96
+requests/day), which is the fastest cadence that fits anonymously. Raise it to
+`*/15` only with a Standard key, where it costs 193 of 12,000 daily requests
+(1.6%) and matches the Sprint 2 brief's "every 15 to 30 minutes" trigger.
 
 **Cron cannot express a 45-minute cadence with a step field.** `*/45` in the
 minute column expands to minutes {0, 45} within each hour, so it fires twice an
@@ -608,22 +625,27 @@ Contains data originally published by NMBS-SNCB, modified by RailPulse.
 
 The separator is an en dash (`–`), as printed by the portal, not a hyphen.
 
-`config.ATTRIBUTION_TEMPLATE` does not currently render that string. It holds
-`"NMBS/SNCB – Open Data – {feed_date}"`, which differs from the portal's
-prescribed form in two ways: no `Source: ` prefix, and `NMBS/SNCB` where the
-portal names the operator `NMBS-SNCB`. Neither is fatal — the licence asks for
-attribution, not for a byte-exact template — but the two should be reconciled,
-and the portal's form is the one to move towards.
+`config.ATTRIBUTION_TEMPLATE` renders the portal's prescribed form. It holds
+`"NMBS-SNCB – Open Data – {feed_date}"`, with `{feed_date}` filled in from
+`feed_info.feed_version` at render time rather than typed by hand and left to
+go stale.
+
+It previously read `NMBS/SNCB`, taking the operator's own `agency_name` from
+the feed. That was changed to `NMBS-SNCB`, the spelling the portal itself uses
+when prescribing the attribution format, on the principle that **the licence
+terms dictate the attribution string, not the data**. Neither form would have
+been a breach — CC BY asks for attribution, not for a byte-exact template — but
+matching the publisher costs nothing.
 
 ### 6.2 Where the attribution belongs
 
 | Location | Form | State on 2026-07-23 |
 | --- | --- | --- |
-| `src/railpulse/config.py` | `ATTRIBUTION_TEMPLATE`, so the date is rendered from the loaded feed rather than typed by hand and left to go stale | Present, wording not yet aligned (above) |
+| `src/railpulse/config.py` | `ATTRIBUTION_TEMPLATE`, so the date is rendered from the loaded feed rather than typed by hand and left to go stale | Present, and matches the portal's prescribed wording |
 | `feed_info` table | `feed_publisher_name`, `feed_publisher_url` and `feed_version` are loaded from the feed, so the database itself carries the provenance of every row | Present — one row, `feed_version` `2026-07-20`. Note `feed_publisher_name` is the slug `nmbssncb`, not a display name, so only the *date* can be rendered from this table; the operator name still has to come from the template |
 | `ingestion_run` table | `source_url`, `source_last_modified`, `http_status` and `bytes_downloaded` per run | Present — columns exist; the one recorded run was an `--offline` rebuild, so its HTTP columns are `NULL` |
-| `README.md` | Both strings, in a Data & licence section | **Not yet written.** The file does not exist at the time of writing |
-| Streamlit dashboard | Footer, on every page | **Not yet built.** `dashboard/` is empty; this is a Sprint 3 obligation, recorded here so it is not forgotten |
+| `README.md` | Both strings, in the header table and a dedicated Licence section | Present — plus `LICENSE`, which states explicitly that the MIT licence covers the code only and **not** the data |
+| Streamlit dashboard | Sidebar, on every page | Present — `dashboard/app.py` renders the licence line from `config.DATA_LICENCE` |
 
 Rendering the date from `feed_info.feed_version` rather than hard-coding it is
 the point: an attribution that names the wrong version of the dataset is not

@@ -1,0 +1,3 @@
+id,parent,notused,detail
+5,0,0,SEARCH s USING INDEX ix_station_name (station_name=?)
+10,0,0,SEARCH p USING INDEX ix_platform_station (station_id=? AND has_platform_code=?)

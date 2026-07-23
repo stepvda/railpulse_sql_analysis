@@ -1,0 +1,31 @@
+table_name,index_name,origin,indexed_columns
+agency,sqlite_autoindex_agency_1,auto (PK/UNIQUE),agency_id
+feed_info,sqlite_autoindex_feed_info_1,auto (PK/UNIQUE),feed_id
+platform,ix_platform_station,explicit,"station_id, has_platform_code, platform_code"
+platform,sqlite_autoindex_platform_1,auto (PK/UNIQUE),stop_id
+platform,sqlite_autoindex_platform_2,auto (PK/UNIQUE),"station_id, platform_code"
+rejected_row,ix_rejected_rule,explicit,"rule_code, source_table"
+route,sqlite_autoindex_route_1,auto (PK/UNIQUE),route_id
+rt_alert,sqlite_autoindex_rt_alert_1,auto (PK/UNIQUE),"snapshot_id, rt_entity_id"
+rt_alert_active_period,sqlite_autoindex_rt_alert_active_period_1,auto (PK/UNIQUE),"snapshot_id, rt_entity_id, period_seq"
+rt_alert_informed_entity,sqlite_autoindex_rt_alert_informed_entity_1,auto (PK/UNIQUE),"snapshot_id, rt_entity_id, entity_seq"
+rt_alert_text,sqlite_autoindex_rt_alert_text_1,auto (PK/UNIQUE),"snapshot_id, rt_entity_id, field_name, language"
+rt_snapshot,ix_rt_snapshot_feed_time,explicit,"feed, fetched_at_utc"
+rt_snapshot,sqlite_autoindex_rt_snapshot_1,auto (PK/UNIQUE),"feed, feed_timestamp_epoch"
+rt_stop_time_update,ix_rt_stu_stop,explicit,"stop_id, schedule_relationship, departure_delay_s"
+rt_stop_time_update,sqlite_autoindex_rt_stop_time_update_1,auto (PK/UNIQUE),"snapshot_id, rt_entity_id, stop_sequence"
+rt_trip_update,ix_rt_trip_update_trip,explicit,"trip_id, start_date"
+rt_trip_update,sqlite_autoindex_rt_trip_update_1,auto (PK/UNIQUE),"snapshot_id, rt_entity_id"
+service,sqlite_autoindex_service_1,auto (PK/UNIQUE),service_id
+service_date,ix_service_date_date,explicit,"service_date, service_id"
+station,ix_station_name,explicit,station_name
+station,sqlite_autoindex_station_1,auto (PK/UNIQUE),station_id
+stop_time,ix_stop_time_boardable_hour,explicit,"is_boardable, departure_hour, trip_id"
+stop_time,ix_stop_time_stop_boardable,explicit,"stop_id, is_boardable, departure_hour"
+stop_time,sqlite_autoindex_stop_time_1,auto (PK/UNIQUE),"trip_id, stop_sequence"
+text_translation,ix_translation_lang,explicit,"language, table_name, field_name"
+transfer,sqlite_autoindex_transfer_1,auto (PK/UNIQUE),"from_stop_id, to_stop_id, from_trip_id, to_trip_id"
+trip,ix_trip_headsign,explicit,trip_headsign
+trip,ix_trip_route_amenity,explicit,"route_id, bikes_allowed, wheelchair_accessible"
+trip,ix_trip_service,explicit,service_id
+trip,sqlite_autoindex_trip_1,auto (PK/UNIQUE),trip_id

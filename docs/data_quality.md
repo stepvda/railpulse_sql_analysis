@@ -4,7 +4,9 @@
 **Timetable window:** 2025-12-20 → 2026-12-12 (358 calendar days, no gaps)
 **Archive:** `nmbssncb_gtfs_static.zip`, 10 files, 394,273,945 bytes uncompressed
 **Built:** run 1, 2026-07-23T08:04:59Z → 08:06:34Z (95 s), status `ok`
-**Licence:** CC BY 4.0 — attribution "NMBS/SNCB - Open Data - 2026-07-20"
+**Licence:** CC BY 4.0 — attribution "NMBS-SNCB - Open Data - 2026-07-20"
+
+> ⓘ **Unfamiliar with a term used here?** [`glossary.md`](glossary.md) defines every GTFS, database and project-specific word this project uses, with examples from this data.
 
 Every number in this document was produced by a query against
 `data/railpulse.db`, and the query is printed next to it. The only exceptions

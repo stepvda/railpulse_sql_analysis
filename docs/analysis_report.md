@@ -4,8 +4,13 @@
 **Prepared by:** RailPulse (urban mobility consulting)
 **Data:** NMBS/SNCB GTFS Static, feed version `2026-07-20`, covering the
 timetable from **2025-12-20 to 2026-12-12**
-**Attribution:** NMBS/SNCB – Open Data – 2026-07-20 · licensed
+**Attribution:** NMBS-SNCB – Open Data – 2026-07-20 · licensed
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
+
+> ⓘ **Unfamiliar with a term used here?** [`glossary.md`](glossary.md) defines
+> every GTFS, database and project-specific word — including *annualised
+> departures*, *boardable call*, *service calendar* and *headsign*, which do a
+> lot of work in this report.
 
 Every figure in this report is produced by a query in [`sql/analysis/`](../sql/analysis/).
 The verbatim output of all 47 queries — with the SQL that produced each one — is
@@ -36,11 +41,11 @@ in [`analysis_results.md`](analysis_results.md), and the full result sets are in
 
 2. **The evening peak is real and the timetable file hides it.** Counting rows
    in the timetable says the network peaks at 10:00. Counting departures that
-   actually happen says 17:00. The difference is that off-peak and seasonal
-   services are numerous but rare, while commuter services are few and run
-   ~250 days a year. Hour 17 sits at rank 10 on the naive measure and rank 1 on
-   the real one. **Capacity decisions taken from an unweighted timetable count
-   would invest in the wrong hour of the day.**
+   actually happen says 17:00. Hour 17 sits at rank 10 on the naive measure and
+   rank 1 on the real one. **Capacity decisions taken from an unweighted
+   timetable count would invest in the wrong hour of the day.** The mechanism is
+   explained in full under Q1 — it is a property of how SNCB fragments its
+   timetable, not a quirk of our query.
 
 3. **The accessibility data cannot support an accessibility statement.** Not
    because the network performs badly, but because the field is empty:
@@ -63,10 +68,16 @@ service actually operates ([`v_trip_service_days`](../sql/05_views.sql)). The
 unweighted figure is reported alongside wherever the two disagree — and they
 disagree materially in Q1, Q2 and Q3.
 
-**Only boardable calls count.** 577,000 of the 2.17 million calls in this feed
+**Only boardable calls count.** 577,462 of the 2.17 million calls in this feed
 are technical pass-throughs (`pickup_type = 1 AND drop_off_type = 1`): the train
 serves the platform but no passenger may use it. Including them would inflate
-every station in this report by roughly a quarter.
+the network-wide departure count by **49%** — and, more awkwardly, would do so
+*unevenly*: Anvers-Central would gain 74.2% while Bruxelles-Central would gain
+0.1%. A pass-through is a train running through a station without commercial
+business there, so the distortion falls hardest on the through-stations and
+barely touches the ones where nearly every train actually stops. Any ranking
+built on unfiltered calls would therefore reorder the hubs, not merely scale
+them.
 
 **"No information" is not "no".** GTFS uses code `0` for both "unstated" and,
 carelessly read, "absent". Q5 counts only explicit guarantees (code `1`) and
@@ -96,10 +107,23 @@ Full reasoning: [`decisions.md`](decisions.md). Data caveats:
 
 ### Why the naive answer (10:00) is wrong
 
-The unweighted count ranks 10:00 first with 94,323 timetable rows. But a call in
-hour 10 runs on an average of **8.8 days**, while a call in hour 07 runs on
-**12.3**. The midday hours are full of services that exist in the timetable and
-seldom in reality.
+**First, the structural fact that makes all of this comprehensible.** A GTFS
+`trip` is not a commercial train. SNCB splits each published train number into
+an average of **21.3 separate trip rows**, each covering an average of only
+**9.3 dates** — because the exact stopping pattern and timings drift across the
+year, and every variant needs its own row. Train 522, for instance, appears as
+**182 distinct trip rows**. No trip in this feed "runs every weekday for a
+year": the longest-lived one covers 318 dates and only 565 of the 134,809 trips
+reach 200.
+
+That fragmentation is what breaks the naive count. Counting rows counts
+*variants*, and an hour served by many short-lived seasonal variants outscores
+an hour served by fewer, longer-lived ones — regardless of how many trains
+actually depart.
+
+The effect is measurable: a call in hour 10 runs on an average of **8.8 days**,
+while a call in hour 17 runs on **12.4**. The midday hours are full of services
+that exist in the timetable and seldom in reality.
 
 | Hour | Annualised rank | Naive rank | Movement | Avg days per call |
 |---|---|---|---|---|
@@ -343,9 +367,13 @@ counts that differ by a factor of 3.5. **Bruxelles-Central absorbs the highest
 load on the fewest platforms in the country.**
 
 On a composite of connectivity, platform headroom and load smoothness,
-**Bruxelles-Midi ranks first (74.7)** and Bruxelles-Central last of the five
-(43.7) — it matches Midi on connectivity (95.6 vs 100) while scoring 0 on
-headroom.
+**Bruxelles-Midi ranks first (74.7)** and Bruxelles-Central **fourth of the five
+(43.7)** — it matches Midi on connectivity (95.6 vs 100) while scoring 0 on
+headroom. Gand-Saint-Pierre is last (29.3), but for the opposite reason: it has
+plenty of platform headroom and simply serves far fewer destinations, which
+drags its connectivity component to 0. Two very different problems producing two
+low scores is precisely why the three components are published alongside the
+composite rather than hidden inside it.
 
 ### Punctuality (live data)
 
@@ -360,17 +388,33 @@ and 10 alert snapshots over roughly nine minutes** (2026-07-23 09:17–09:26 UTC
 which **563 carry an actual delay reading**. That is a demonstration of the
 mechanism, not a settled ranking — read it accordingly.
 
-| Rank | Station | Observed | On time | Avg delay | Worst |
-|---|---|---|---|---|---|
-| 1 | Bruxelles-Midi | 11 | 90.9% | 44 s | 120 s |
-| 2 | Bruxelles-Central | 17 | 82.4% | 60 s | 240 s |
-| 3 | Gand-Saint-Pierre | 7 | 71.4% | 94 s | 480 s |
-| 4 | Bruxelles-Nord | 17 | 70.6% | 64 s | 240 s |
-| 5 | Anvers-Central | 11 | 63.6% | 76 s | 180 s |
+| Rank | Station | Scored | On time | Cancelled | No prediction | Avg delay | Worst |
+|---|---|---|---|---|---|---|---|
+| 1 | Bruxelles-Midi | 11 | 90.9% | 0 | 24 | 44 s | 120 s |
+| 2 | Bruxelles-Central | 17 | 82.4% | 0 | 19 | 60 s | 240 s |
+| 3 | Gand-Saint-Pierre | 7 | 71.4% | 0 | 14 | 94 s | 480 s |
+| 4 | Bruxelles-Nord | 17 | 70.6% | 0 | 19 | 64 s | 240 s |
+| 5 | Anvers-Central | 11 | 63.6% | 0 | 13 | 76 s | 180 s |
 
-Delay distribution across all 626 observed non-cancelled departures:
-**69.9% on time** (<2 min), 17.9% delayed 2–5 minutes, 2.1% delayed 5–15
-minutes, 0.6% beyond 15 minutes, and 9.5% carrying no delay reading at all.
+**Read the "No prediction" column before the on-time column.** Across all 1,758
+observed calls, only **24.8%** carry a delay reading at all; **68.0%** are
+`NO_DATA` — the operator is reporting on the trip but has issued no prediction
+for that particular call. The on-time percentages above are computed over the
+scored minority, and 7–17 observations per station is an anecdote, not a rate.
+
+Delay distribution across all observed calls: 24.8% on time (<2 min), 6.3%
+delayed 2–5 minutes, 0.6% delayed 5–15 minutes, 0.2% beyond 15 minutes, and
+**68.0% with no reading**.
+
+> **A correction worth recording.** An earlier version of this report showed
+> 13–24 "cancelled" calls per hub. That was wrong. GTFS-Realtime defines *two
+> different* `ScheduleRelationship` enums on the same integers — at trip level
+> `2` means UNSCHEDULED, but at **stop** level `2` means **NO_DATA**, and
+> **`1`** is SKIPPED. The pipeline was reading stop-level `2` as a cancellation,
+> which overstated cancellations by a factor of ~265 (12,703 calls against a
+> true 48 network-wide) and quietly removed them from the punctuality
+> denominator. `sql/06_realtime.sql` now keeps the two vocabularies in separate
+> reference tables so the codes cannot be confused again.
 
 **Do not draw conclusions from this table yet.** Seven to seventeen observations
 per station is an anecdote: an earlier run of the same pipeline, over a
@@ -382,7 +426,7 @@ What the exercise *does* establish is that the mechanism works end to end:
 **100% of observed real-time trips resolved against the static timetable**, so
 the join between live operations and the Sprint 1 model is sound, and the
 delay/cancellation split is being captured correctly. Leave
-`scripts/poll_realtime.sh` running on a 15-minute cron for a week and this table
+`scripts/poll_realtime.sh` running on a 30-minute cron for a week and this table
 becomes a real punctuality leaderboard — that accumulation is Sprint 2's job.
 
 📄 [`q6_network_leaderboard.sql`](../sql/analysis/q6_network_leaderboard.sql)
@@ -428,7 +472,7 @@ describe access paths; only a stopwatch describes per-row work.
 2. **Populate the `calendar.txt` weekday flags,** or state in the feed
    documentation that they are intentionally unused. Every consumer currently
    has to reverse-engineer the weekly pattern from 4.7 million exception rows.
-3. **Confirm the 12 calls published at 48:00:00 or later** (up to `87:16:00`).
+3. **Confirm the 12 calls published at 48:00:00 or later** (up to `87:39:00`).
    These are quarantined here as implausible; if they are intentional, the
    semantics should be documented.
 4. **Set `bikes_allowed` explicitly on replacement-bus trips** — `0` currently

@@ -1,0 +1,8 @@
+weekday,day_of_week,service_days,distinct_services,pct_of_all_service_days
+Monday,1,731328,36109,15.57
+Tuesday,2,741149,35912,15.78
+Wednesday,3,738952,35958,15.73
+Thursday,4,736510,36523,15.68
+Friday,5,743449,34567,15.83
+Saturday,6,511664,29337,10.89
+Sunday,0,494087,28393,10.52

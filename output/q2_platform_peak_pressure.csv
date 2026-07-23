@@ -1,0 +1,7 @@
+platform,busiest_hour,timetabled_calls_in_busiest_hour,timetabled_calls_all_day,pct_of_platform_day,annual_departures_in_busiest_hour,trains_per_day_in_peak_hour,avg_minutes_between_trains_in_peak
+Platform 3,09:00,791,11982,6.6,3790,10.6,5.7
+Platform 4,10:00,722,10515,6.9,4009,11.2,5.4
+Platform 2,22:00,487,7471,6.5,2268,6.3,9.5
+Platform 1,14:00,409,6781,6.0,3024,8.4,7.1
+Platform 5,11:00,364,6191,5.9,2405,6.7,8.9
+Platform 6,10:00,359,5740,6.3,2124,5.9,10.1

@@ -164,7 +164,9 @@ and `ix_stop_time_boardable_hour` can cover the query outright. `is_boardable`
 also encodes a definition rather than an optimisation — 712,286 calls have
 `pickup_type = 1`, of which 577,462 (26.67% of all calls) are technical
 pass-throughs where the train serves the platform and nobody may board. Counting
-those as departures would overstate every hub by roughly a quarter. The cost is
+those as departures would overstate the network by 49% — and unevenly, adding
+74.2% at Anvers-Central against 0.1% at Bruxelles-Central, which reorders a hub
+ranking rather than merely scaling it. The cost is
 disk and the rule that these columns are only ever written by
 `sql/03_transform.sql`.
 
@@ -375,8 +377,10 @@ cannot drift.
 **Consequences.** The link is soft but not unexamined. `v_rt_departure_performance`
 INNER JOINs `rt_trip_update` to `trip`, so any punctuality query silently and
 correctly ignores unmatched rows rather than reporting them as delay-free, and the
-match rate is intended to be reported as a post-build check (`railpulse verify` in
-the module map in `src/railpulse/__init__.py`; that module is not written yet).
+match rate is reported as a post-build check by `railpulse verify`
+(`src/railpulse/verify.py`), deliberately as a *warning* rather than an error —
+a low match rate means the static feed has gone stale and wants a rebuild, not
+that the pipeline is broken.
 The poller has now written its first snapshots and every real-time `trip_id`
 recorded so far resolves against the current static feed — zero unmatched. That
 figure proves very little: it is a few hundred trip-updates polled within hours

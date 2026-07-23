@@ -138,7 +138,7 @@ def test_boardable_flags_follow_pickup_and_dropoff(conn):
 @pytest.mark.parametrize(
     "rule_code, expected",
     [
-        ("DQ-03-IMPLAUSIBLE-DEPARTURE", 1),        # 87:16:00
+        ("DQ-03-IMPLAUSIBLE-DEPARTURE", 1),        # 87:39:00
         ("DQ-04-ORPHAN-PLATFORM", 1),              # P_ORPHAN
         ("DQ-04-ORPHAN-SERVICE-DATE", 1),          # SVC_GHOST
         ("DQ-04-ORPHAN-STOP-TIME-TRIP", 1),        # T_GHOST
@@ -146,6 +146,7 @@ def test_boardable_flags_follow_pickup_and_dropoff(conn):
         ("DQ-05-DUPLICATE-CALL", 1),               # T_EVENING seq 2 twice
         ("DQ-05-DUPLICATE-SERVICE-DATE", 1),       # SVC_DAILY 20260105 twice
         ("DQ-09-ORPHAN-TRIP", 1),                  # T_ORPHAN_ROUTE
+        ("DQ-08-BAD-STOP-SEQUENCE", 1),            # stop_sequence = 'abc'
     ],
 )
 def test_each_rule_quarantines_exactly_what_it_should(conn, rule_code, expected):
@@ -166,7 +167,7 @@ def test_nothing_is_lost_without_being_recorded(conn):
         "SELECT COUNT(*) FROM rejected_row WHERE source_table = 'stg_stop_times'"
     ).fetchone()[0]
     assert loaded + rejected == staged
-    assert loaded == 7          # 11 staged - 4 quarantined
+    assert loaded == 7          # 12 staged - 5 quarantined
 
 
 def test_quarantined_rows_carry_a_traceable_line_number(conn):
@@ -176,7 +177,35 @@ def test_quarantined_rows_carry_a_traceable_line_number(conn):
     ).fetchall()
     assert len(rows) == 1
     assert rows[0]["src_line_no"] is not None
-    assert "87:16:00" in rows[0]["payload"]
+    assert "87:39:00" in rows[0]["payload"]
+
+
+def test_non_numeric_stop_sequence_is_quarantined_not_silently_zeroed(conn):
+    """The DQ-08 regression test.
+
+    SQLite's CAST('abc' AS INTEGER) is 0, not NULL, so the original rule
+    (`WHERE stop_sequence IS NULL`) was unreachable and a corrupt row would
+    have loaded as stop_sequence 0 — becoming the trip's first call and
+    changing the origin Q3 depends on. Assert both halves: it is rejected,
+    AND no phantom sequence-0 call exists.
+    """
+    rejected = conn.execute(
+        "SELECT payload FROM rejected_row "
+        " WHERE rule_code = 'DQ-08-BAD-STOP-SEQUENCE'"
+    ).fetchall()
+    assert len(rejected) == 1
+
+    assert conn.execute(
+        "SELECT COUNT(*) FROM stop_time WHERE stop_sequence = 0"
+    ).fetchone()[0] == 0
+
+    # T_WEEKEND's origin must still be its real first call, not the bad row.
+    origin = conn.execute(
+        "SELECT stop_sequence, departure_time FROM v_trip_origin "
+        " WHERE trip_id = 'T_WEEKEND'"
+    ).fetchone()
+    assert origin["stop_sequence"] == 1
+    assert origin["departure_time"] == "23:40:00"
 
 
 # ---------------------------------------------------------------------------

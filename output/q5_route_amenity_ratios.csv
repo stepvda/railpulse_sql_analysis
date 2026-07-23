@@ -1,0 +1,31 @@
+route_id,route_short_name,route_long_name,mode,scheduled_trips,bikes_guaranteed,bikes_ratio,pct_bikes,wheelchair_guaranteed,pct_wheelchair,pct_any_amenity,worst_rank
+gr:nmbssncb:68,BUS,Luxembourg (LU) -- Arlon,Bus,663,0,0 / 663,0.0,0,0.0,0.0,1
+gr:nmbssncb:1393,BUS,Bruxelles-Midi -- Nivelles,Bus,331,0,0 / 331,0.0,0,0.0,0.0,2
+gr:nmbssncb:1537,BUS,Charleroi-Central -- Fleurus,Bus,229,0,0 / 229,0.0,0,0.0,0.0,3
+gr:nmbssncb:1377,BUS,Hasselt -- Kiewit,Bus,203,0,0 / 203,0.0,0,0.0,0.0,4
+gr:nmbssncb:1538,BUS,Ottignies -- Fleurus,Bus,174,0,0 / 174,0.0,0,0.0,0.0,5
+gr:nmbssncb:1430,BUS,Zottegem -- Denderleeuw,Bus,173,0,0 / 173,0.0,0,0.0,0.0,6
+gr:nmbssncb:1548,BUS,Liège-Guillemins -- Flémalle-Haute,Bus,167,0,0 / 167,0.0,0,0.0,0.0,7
+gr:nmbssncb:15,BUS,Breda (NL) -- Noorderkempen (Brecht),Bus,164,0,0 / 164,0.0,0,0.0,0.0,8
+gr:nmbssncb:1490,BUS,Hal -- Braine-le-Comte,Bus,154,0,0 / 154,0.0,0,0.0,0.0,9
+gr:nmbssncb:1378,BUS,Louvain -- Landen,Bus,152,0,0 / 152,0.0,0,0.0,0.0,10
+gr:nmbssncb:1410,BUS,Bruxelles-Midi -- Luttre,Bus,147,0,0 / 147,0.0,0,0.0,0.0,11
+gr:nmbssncb:1457,BUS,Begijnendijk -- Aarschot,Bus,145,0,0 / 145,0.0,0,0.0,0.0,12
+gr:nmbssncb:1389,BUS,Diest -- Aarschot,Bus,143,0,0 / 143,0.0,0,0.0,0.0,13
+gr:nmbssncb:1379,BUS,Tirlemont -- Landen,Bus,139,0,0 / 139,0.0,0,0.0,0.0,14
+gr:nmbssncb:1502,BUS,Bruxelles-Midi -- Hal,Bus,138,0,0 / 138,0.0,0,0.0,0.0,15
+gr:nmbssncb:1382,BUS,Bruges -- Blankenberge,Bus,126,0,0 / 126,0.0,0,0.0,0.0,16
+gr:nmbssncb:1474,BUS,Herentals -- Mol,Bus,124,0,0 / 124,0.0,0,0.0,0.0,17
+gr:nmbssncb:1386,BUS,Hasselt -- Tongres,Bus,122,0,0 / 122,0.0,0,0.0,0.0,18
+gr:nmbssncb:1281,BUS,Bruges -- Ostende,Bus,119,0,0 / 119,0.0,0,0.0,0.0,19
+gr:nmbssncb:1398,BUS,Enghien -- Ath,Bus,115,0,0 / 115,0.0,0,0.0,0.0,20
+gr:nmbssncb:1367,BUS,Tournai -- Mouscron,Bus,114,0,0 / 114,0.0,0,0.0,0.0,21
+gr:nmbssncb:1510,BUS,Namur -- Tamines,Bus,114,0,0 / 114,0.0,0,0.0,0.0,21
+gr:nmbssncb:1368,BUS,Mons -- Saint-Ghislain,Bus,112,0,0 / 112,0.0,0,0.0,0.0,23
+gr:nmbssncb:1511,BUS,Mons -- La Louvière-Sud,Bus,110,0,0 / 110,0.0,0,0.0,0.0,24
+gr:nmbssncb:1337,BUS,Malines -- Londerzeel,Bus,107,0,0 / 107,0.0,0,0.0,0.0,25
+gr:nmbssncb:1475,BUS,Lierre -- Herentals,Bus,106,0,0 / 106,0.0,0,0.0,0.0,26
+gr:nmbssncb:1526,BUS,Mol -- Hamont,Bus,105,0,0 / 105,0.0,0,0.0,0.0,27
+gr:nmbssncb:1481,BUS,Ottignies -- Wavre,Bus,102,0,0 / 102,0.0,0,0.0,0.0,28
+gr:nmbssncb:1522,BUS,Herentals -- Turnhout,Bus,102,0,0 / 102,0.0,0,0.0,0.0,28
+gr:nmbssncb:1518,BUS,Bruxelles-Luxembourg -- Ottignies,Bus,101,0,0 / 101,0.0,0,0.0,0.0,30

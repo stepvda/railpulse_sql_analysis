@@ -1,0 +1,4 @@
+amenity,scheduled_trips,trips_explicitly_guaranteed,trips_explicitly_refused,trips_no_information,ratio,pct_guaranteed
+Bicycle storage (bikes_allowed),134809,123051,0,11758,123051 / 134809,91.28
+Wheelchair accessibility (wheelchair_accessible),134809,0,0,134809,0 / 134809,0.0
+Either amenity guaranteed,134809,123051,,11758,123051 / 134809,91.28

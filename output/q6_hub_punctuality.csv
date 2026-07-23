@@ -1,0 +1,6 @@
+punctuality_rank,station_name,scored_departures,on_time_departures,on_time_pct,cancelled_calls,calls_without_prediction,calls_observed_total,avg_delay_seconds,worst_delay_seconds
+1,Bruxelles-Midi,11,10,90.9,0,24,37,44.0,120
+2,Bruxelles-Central,17,14,82.4,0,19,36,60.0,240
+3,Gand-Saint-Pierre,7,5,71.4,0,14,22,94.0,480
+4,Bruxelles-Nord,17,12,70.6,0,19,36,64.0,240
+5,Anvers-Central,11,7,63.6,0,13,29,76.0,180

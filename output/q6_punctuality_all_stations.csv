@@ -1,0 +1,9 @@
+station_name,observed_departures,on_time_pct,avg_delay_seconds,cancelled_calls,calls_without_prediction
+Anvers-Berchem,11,45.5,98.0,0,17
+Anvers-Central,11,63.6,76.0,0,13
+Bruxelles-Nord,17,70.6,64.0,0,19
+Lierre,14,71.4,56.0,0,7
+Liège-Guillemins,10,80.0,66.0,0,14
+Bruxelles-Central,17,82.4,60.0,0,19
+Louvain,10,90.0,36.0,0,14
+Bruxelles-Midi,11,90.9,44.0,0,24

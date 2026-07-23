@@ -1,0 +1,3 @@
+route_type,mode,routes,scheduled_trips,trips_with_bikes_guaranteed,bikes_ratio,pct_bikes,trips_with_wheelchair_guaranteed,pct_wheelchair
+2,Rail,1531,123051,123051,123051 / 123051,100.0,0,0.0
+3,Bus,270,11758,0,0 / 11758,0.0,0,0.0

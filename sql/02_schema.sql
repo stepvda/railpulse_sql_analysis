@@ -2,6 +2,23 @@
 -- RailPulse — 02_schema.sql
 -- The normalised core model (3NF) plus its reference/lookup tables.
 -- ===========================================================================
+--
+-- ⓘ NEW TO THIS DOMAIN? Read docs/glossary.md first. It defines every term
+--   used below — GTFS, trip, route, headsign, service calendar, stop_time,
+--   platform vs station, 3NF, transitive dependency, fact vs dimension table,
+--   WITHOUT ROWID, SARGable — each with an example from this data. Five
+--   minutes there will save you twenty here.
+--
+-- THE ONE-PARAGRAPH VERSION, FOR SOMEONE WHO HAS NEVER SEEN GTFS
+--
+--   Belgian Railways publishes its timetable as a ZIP of CSV files. In it, a
+--   ROUTE is a named service pattern ("IC", "S5"). A TRIP is one journey by one
+--   vehicle on one route. A SERVICE is a pattern of dates telling you which
+--   days a trip runs. A STOP_TIME is one trip stopping at one platform once —
+--   there are 2.17 million of those, and it is the table everything is really
+--   about. GTFS keeps stations and platforms in one file with a type flag; we
+--   split them into STATION and PLATFORM, because they are different things.
+--
 -- READ THIS FIRST — THE SHAPE OF THE MODEL
 --
 --   Reference (static code lists, hand-seeded at the bottom of this file)
@@ -299,7 +316,13 @@ CREATE TABLE service_date (
     day_of_week    INTEGER NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
     PRIMARY KEY (service_id, service_date),
     CHECK (service_date LIKE '____-__-__')
-) WITHOUT ROWID;   -- the PK *is* the row: saves ~150 MB and one B-tree hop
+) WITHOUT ROWID;
+-- WITHOUT ROWID: rows are stored inside the primary-key B-tree instead of in a
+-- separate table addressed by a hidden rowid. Worth it here because the two key
+-- columns are most of the row — a normal table would additionally carry a
+-- separate PK index holding service_id + service_date + rowid for all 4.7 M
+-- rows, on the order of 150 MB by arithmetic on the column widths. It also
+-- removes one B-tree hop from every lookup.
 
 -- --------------------------------------------------------------------------
 -- trip — one vehicle journey: a route, running on a service calendar,
@@ -381,7 +404,10 @@ CREATE TABLE text_translation (
 -- `is_boardable` is the other analytical shortcut. 577 k calls in this feed are
 -- technical pass-throughs (pickup_type = 1 AND drop_off_type = 1): the train
 -- physically passes the platform but no passenger may use it. Counting those
--- as "departures" would overstate every hub in the report by ~27 %.
+-- as "departures" would overstate the network by 49 %, and unevenly: it adds
+-- 74.2 % at Anvers-Central and 0.1 % at Bruxelles-Central, because a
+-- pass-through is a train with no commercial business at that station. The
+-- distortion reorders hubs rather than just scaling them.
 -- ---------------------------------------------------------------------------
 CREATE TABLE stop_time (
     trip_id        TEXT    NOT NULL REFERENCES trip(trip_id),

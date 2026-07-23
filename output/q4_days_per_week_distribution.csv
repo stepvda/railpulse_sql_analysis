@@ -1,0 +1,8 @@
+typical_days_per_week,frequency_class,services,pct_of_services,avg_operating_days,avg_active_weeks
+1,Low Frequency/Special,10376,20.11,9.1,7.0
+2,Medium Frequency,14215,27.55,33.8,16.0
+3,Medium Frequency,1384,2.68,9.4,3.6
+4,Medium Frequency,2278,4.42,26.1,7.2
+5,High Frequency,16541,32.06,123.4,26.4
+6,High Frequency,379,0.73,202.1,38.3
+7,High Frequency,6420,12.44,301.0,47.6

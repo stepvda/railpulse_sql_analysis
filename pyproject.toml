@@ -1,0 +1,100 @@
+# ===========================================================================
+# RailPulse — packaging
+# ===========================================================================
+# WHY THIS FILE EXISTS
+#
+# The package lives in src/, which is good practice (it stops Python from
+# importing the project by accident just because you happen to be standing in
+# the repository root) but it has one consequence: `python -m railpulse` does
+# NOT work until Python is told where to look.
+#
+# Without this file the only working entry points were `make …`, which exports
+# PYTHONPATH itself. Every bare `railpulse build` in the documentation would
+# have failed for anyone not using make.
+#
+# Installing the project fixes that properly:
+#
+#     pip install -e .
+#
+# after which both of these work from anywhere:
+#
+#     railpulse build           # the console script declared below
+#     python -m railpulse build
+#
+# `make setup` does this for you.
+# ===========================================================================
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "railpulse"
+version = "1.0.0"
+description = "Belgian transit SQL analysis — SNCB/NMBS GTFS ingestion and operational analytics"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "Stephane van der Aa" }]
+keywords = ["gtfs", "sqlite", "transit", "sncb", "nmbs", "data-engineering"]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Database",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+
+# The pipeline depends on almost nothing on purpose: the challenge forbids
+# data-frame engines, so ingestion is `requests` plus the standard library and
+# every transformation is raw SQL executed through sqlite3.
+dependencies = [
+    "requests>=2.31,<3",
+    "python-dotenv>=1.0,<2",
+]
+
+[project.optional-dependencies]
+# Rendering only. pandas is never used to filter or aggregate — see
+# dashboard/README.md and docs/decisions.md ADR-13.
+dashboard = [
+    "streamlit>=1.36,<2",
+    "pandas>=2.2,<3",
+    "altair>=5.3,<6",
+]
+# Drives the Belgian Mobility developer portal to create the API subscription.
+portal = [
+    "playwright>=1.44,<2",
+]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+# Makes `railpulse <command>` work directly, which is the form every docstring
+# and every documentation page already uses.
+railpulse = "railpulse.cli:main"
+
+[project.urls]
+Documentation = "https://github.com/stepvda/railpulse_sql_analysis#readme"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+railpulse = ["py.typed"]
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# tests/conftest.py also prepends src/ to sys.path so the suite runs from a
+# clean checkout without an editable install.
+pythonpath = ["src"]
+addopts = "-q"

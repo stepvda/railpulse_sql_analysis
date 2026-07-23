@@ -1,0 +1,45 @@
+MIT License
+
+Copyright (c) 2026 Stephane van der Aa
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+===============================================================================
+THE DATA IS SEPARATELY LICENSED — THE MIT LICENCE ABOVE DOES NOT COVER IT
+===============================================================================
+
+This licence covers the SOURCE CODE, SQL and documentation in this repository.
+
+The transit data this project ingests, and any derived figures reproduced in
+the documentation and in output/, come from the Belgian Mobility Open Data
+portal (https://data.belgianmobility.io/) and are licensed under
+
+    Creative Commons Attribution 4.0 International (CC BY 4.0)
+    https://creativecommons.org/licenses/by/4.0/
+
+Required attribution, in the format the publisher specifies:
+
+    NMBS-SNCB – Open Data – 2026-07-20
+
+If you redistribute the data or figures derived from it, you must carry that
+attribution. See docs/api_and_compliance.md for the full terms, the endpoint
+list and the rate limits.
+
+This project is not affiliated with, endorsed by, or connected to SNCB/NMBS or
+the Belgian Mobility Company.

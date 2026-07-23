@@ -3,9 +3,11 @@
 Every table and every view in `data/railpulse.db`, with its purpose, its grain,
 its row count and its columns.
 
+> ⓘ **Unfamiliar with a term used here?** [`glossary.md`](glossary.md) defines every GTFS, database and project-specific word this project uses, with examples from this data.
+
 **Source feed.** SNCB/NMBS GTFS Static, Belgian Mobility Open Data portal,
 `https://api-management-discovery-production.azure-api.net/api/gtfs/feed/nmbssncb/static`.
-Licence CC BY 4.0, attribution "NMBS/SNCB - Open Data - 2026-07-20".
+Licence CC BY 4.0, attribution "NMBS-SNCB - Open Data - 2026-07-20".
 
 **Feed identity as loaded.** `feed_id` `nmbssncb`, `feed_version` `2026-07-20`,
 `feed_lang` `fr`, validity window **2025-12-20 → 2026-12-12** (358 distinct

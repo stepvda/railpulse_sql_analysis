@@ -31,6 +31,35 @@
 --     (pickup_type <> 1); the 577 k technical pass-throughs are excluded.
 --   * the hour is the clock hour a passenger reads on the platform, so a
 --     GTFS "24:20:00" counts towards hour 00, not a fictional hour 24.
+--
+-- ---------------------------------------------------------------------------
+-- ⓘ SQL FEATURES USED BELOW, IF ANY ARE NEW TO YOU
+--
+--   WITH name AS (...)      A "common table expression" (CTE): a named
+--                           intermediate result, so one unreadable nested
+--                           query becomes a readable sequence of steps.
+--
+--   RANK() OVER (ORDER BY x DESC)
+--                           A *window function*. Unlike a normal aggregate,
+--                           it does NOT collapse rows: every row survives and
+--                           gets its ranking attached. Here it numbers the
+--                           hours 1..24 by volume without a second query.
+--
+--   SUM(x) OVER ()          The same idea with an empty window: puts the GRAND
+--                           TOTAL on every row. That is what lets the next
+--                           column compute "percentage of the whole day"
+--                           in one pass instead of querying the total
+--                           separately and joining it back.
+--
+--   SUM(SUM(x)) OVER ()     Looks odd, is not a typo. The inner SUM is the
+--                           GROUP BY aggregate; the outer one is a window over
+--                           the already-grouped rows. Read it as "the total of
+--                           all the group totals".
+--
+--   printf('%02d:00', h)    Formatting only — turns the integer 7 into "07:00"
+--                           so the output sorts and reads correctly.
+--
+-- docs/glossary.md explains all of these at more length.
 -- ===========================================================================
 
 

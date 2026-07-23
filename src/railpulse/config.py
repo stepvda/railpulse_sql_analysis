@@ -96,8 +96,12 @@ USER_AGENT = _env(
 # --------------------------------------------------------------------------
 # Attribution — required by the CC BY 4.0 licence the portal publishes under.
 # --------------------------------------------------------------------------
+# The portal prescribes the form "[PTO Name] – Open Data – [Date of dataset
+# update]", with an en dash, and names this operator NMBS-SNCB. That spelling is
+# used here rather than the feed's own agency_name ("NMBS/SNCB") because the
+# licence terms, not the feed, dictate the attribution string.
 DATA_LICENCE = "Creative Commons Attribution 4.0 International (CC BY 4.0)"
-ATTRIBUTION_TEMPLATE = "NMBS/SNCB – Open Data – {feed_date}"
+ATTRIBUTION_TEMPLATE = "NMBS-SNCB – Open Data – {feed_date}"
 
 # --------------------------------------------------------------------------
 # Ingestion tunables

@@ -1,0 +1,7 @@
+delay_band,calls,pct_of_observations
+(no reading),1193,68.02
+On time (< 2 min),435,24.8
+Slight delay (2-5 min),111,6.33
+Delayed (5-15 min),11,0.63
+Badly delayed (15-30 min),2,0.11
+Severely delayed (30 min+),2,0.11

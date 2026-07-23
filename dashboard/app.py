@@ -370,10 +370,14 @@ SELECT 'DQ-07', 'Translations are keyed by value; record_id is empty throughout'
        (SELECT COUNT(*) FROM text_translation),
        'text_translation joins on field_value rather than a record id.'
 UNION ALL
-SELECT 'DQ-08', 'Empty string is not NULL (stop_code, stop_url, zone_id)',
+-- The count is deliberately platform_code rather than stop_code/stop_url/
+-- zone_id: those three are blank on every row and are simply not carried into
+-- the core model, so there is nothing left to count. platform_code is the one
+-- place where the empty-string-to-NULL normalisation is still visible.
+SELECT 'DQ-08', 'Empty string is not NULL: blank platform_code became NULL',
        (SELECT COUNT(*) FROM platform WHERE platform_code IS NULL),
        (SELECT COUNT(*) FROM platform),
-       'Blank columns normalised to NULL and not carried into the core model.'
+       'stop_code, stop_url and zone_id are blank throughout and were dropped.'
 UNION ALL
 SELECT 'DQ-09', 'Trips referencing an unknown route or service',
        (SELECT COUNT(*) FROM rejected_row WHERE rule_code LIKE 'DQ-09%'),
@@ -783,7 +787,7 @@ def page_overview() -> None:
 | Q3 | Top terminal destinations for trips departing before 12:00 | Anvers-Central leads on both measures |
 | Q4 | Weekly frequency class per service | Derived from calendar_dates — calendar.txt is empty (DQ-01) |
 | Q5 | Amenity guarantees per route | A clean mode split, and one field that is entirely unpopulated |
-| Leaderboard | The five main hubs compared | Structural now, punctuality once the real-time poller has run |
+| Leaderboard | The five main hubs compared | Structural always; punctuality only once the poller has collected more than a sample |
 | Data quality | What was cleaned, rejected and why | Nine DQ rules, counted live |
 """
     )
@@ -1354,9 +1358,12 @@ def page_q4() -> None:
     )
     st.dataframe(distribution, use_container_width=True, hide_index=True)
     st.caption(
-        "Two spikes carry the network: 5 days (Monday-to-Friday commuter "
-        "services) and 7 days (daily services). The spike at 2 is the "
-        "weekend-only tier."
+        "Two bars carry the network, and they are not the two a reader expects: "
+        "5 days (16 541 services, the Monday-to-Friday commuter tier) and "
+        "2 days (14 215). Only 6 420 services run all seven days. The 2-day "
+        "tier is the weekend one but not purely so — 407 617 of its 480 828 "
+        "operating dates fall on a Saturday or a Sunday (84.8%), the remaining "
+        "15.2% on weekdays."
     )
 
     st.subheader("The same classes weighted by the trips that use them")
@@ -1545,10 +1552,12 @@ def page_leaderboard() -> None:
         "available and is what a scheduler actually optimises, and a punctuality "
         "leaderboard built from accumulated GTFS-Realtime snapshots, which only "
         "becomes meaningful once the poller has been running. The hubs compared "
-        f"are {', '.join(config.MAIN_HUBS)}, fixed in "
-        "`src/railpulse/config.py` so this page and "
-        "`sql/analysis/q6_network_leaderboard.sql` cannot disagree about the "
-        "shortlist."
+        f"are {', '.join(config.MAIN_HUBS)}. That shortlist is written down "
+        "twice: as `MAIN_HUBS` in `src/railpulse/config.py`, which is what this "
+        "sentence prints, and as five string literals in "
+        "`sql/analysis/q6_network_leaderboard.sql`, which is what the tables "
+        "below actually query. SQLite cannot read a Python constant, so the two "
+        "have to be edited together — they agree today, and nothing enforces it."
     )
 
     st.subheader("Part A — structural leaderboard")
@@ -1670,8 +1679,8 @@ def page_leaderboard() -> None:
     if not readings:
         st.warning(
             "No real-time delay readings have been collected yet. Start the "
-            "poller (`scripts/poll_realtime.sh`, or `python -m railpulse "
-            "ingest-realtime`) and this section fills in. Until then the "
+            "poller (`scripts/poll_realtime.sh`, or `make poll`, or "
+            "`python -m railpulse poll`) and this section fills in. Until then the "
             "punctuality question stays unanswered rather than being answered "
             "from the timetable, which would just report 100% on time."
         )
@@ -1797,8 +1806,15 @@ def page_data_quality() -> None:
     st.dataframe(characteristics, use_container_width=True, hide_index=True)
     st.caption(
         "None of these is a defect, and all three would silently distort the "
-        "report if they were missed. The pass-throughs in particular would "
-        "inflate every hub in this analysis by roughly a quarter."
+        "report if they were missed. The pass-throughs are 26.7% of every call "
+        "in the timetable, but they are not spread evenly, which is what makes "
+        "them dangerous: they pile up where trains run through without a "
+        "commercial stop (Bruxelles-Chapelle 23 386, Bruxelles-Congrès 23 095, "
+        "Schaerbeek 12 836) and are almost absent from the five leaderboard "
+        "hubs (Bruxelles-Central 44, Bruxelles-Midi 9, Bruxelles-Nord 3, "
+        "Anvers-Central and Gand-Saint-Pierre none). Counting them would not "
+        "inflate the network uniformly — it would invent traffic at precisely "
+        "the stations that have none."
     )
     with st.expander("Show the SQL — dashboard/app.py · SQL_FEED_CHARACTERISTICS"):
         st.code(SQL_FEED_CHARACTERISTICS, language="sql")

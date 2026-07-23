@@ -1,0 +1,4 @@
+frequency_class,services,pct_of_services,total_operating_days,pct_of_operating_days,min_days_per_week,max_days_per_week,avg_operating_days
+High Frequency,23340,45.24,4049433,86.21,5,7,173.5
+Medium Frequency,17877,34.65,553302,11.78,2,4,31.0
+Low Frequency/Special,10376,20.11,94404,2.01,1,1,9.1

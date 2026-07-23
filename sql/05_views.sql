@@ -2,6 +2,25 @@
 -- RailPulse — 05_views.sql
 -- The semantic layer: business vocabulary on top of the GTFS-shaped core.
 -- ===========================================================================
+--
+-- ⓘ WHAT IS A VIEW, AND WHY DOES THIS FILE EXIST?
+--
+--   A view is a SAVED QUERY that you can select from as though it were a
+--   table. It stores no data of its own; it re-runs each time you use it.
+--
+--   Its real job here is to DEFINE A WORD ONCE. "Departure" sounds obvious
+--   until you notice that 577 000 of this feed's 2.17 million calls are trains
+--   passing through a platform without opening their doors. Is that a
+--   departure? This project says no — and says it in exactly one place,
+--   v_departure, so that five different queries cannot quietly answer the same
+--   question five different ways.
+--
+--   If you only read one definition in this file, read v_departure. Every
+--   headline number in the project is built on it.
+--
+--   docs/glossary.md defines the terms used below (call, boardable, annualised
+--   departures, window function, grain).
+-- ===========================================================================
 -- A view here is a *named join*, not a materialised copy. Its job is to make
 -- sure that "a departure", "a morning trip" and "a high-frequency service" mean
 -- exactly one thing across every query, every chart and every conversation with
@@ -20,10 +39,14 @@
 -- with its platform, station, trip and route.
 --
 -- Two filters carry the whole definition:
---   is_boardable = 1        excludes the 577 k technical pass-throughs where
+--   is_boardable = 1        excludes the 577 462 technical pass-throughs where
 --                           the train serves the platform but nobody may get on
---                           (pickup_type = 1). Counting them would inflate every
---                           hub in this report by roughly a quarter.
+--                           (pickup_type = 1). Counting them would inflate the
+--                           network by 49 %, and unevenly — 74.2 % at
+--                           Anvers-Central against 0.1 % at Bruxelles-Central,
+--                           because a pass-through is a train with no
+--                           commercial business at that station. It would
+--                           therefore reorder any hub ranking, not just scale it.
 --   departure_secs NOT NULL excludes calls with no published departure.
 --
 -- Deliberately NOT filtered here: route_type. The network includes 270

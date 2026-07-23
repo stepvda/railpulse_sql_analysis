@@ -227,9 +227,22 @@ SELECT
 -- @label: q6_hub_punctuality
 -- @title: Hub punctuality leaderboard (real-time)
 -- @description: On-time rate per hub, on-time defined as a departure delay
---   under 120 s. Cancelled (SKIPPED) calls are reported in their own column
---   rather than counted as punctual. Hubs with no observations yet are
---   excluded rather than shown as 100 %.
+--   under 120 s.
+--
+--   THREE STATES ARE KEPT APART, AND THE MIDDLE ONE IS THE TRAP.
+--   GTFS-RT's stop-level schedule_relationship uses a different vocabulary from
+--   its trip-level one, on the same integers:
+--     1 = SKIPPED  the call will not happen. A cancellation. No punctuality
+--                  verdict is possible, and it must NOT be scored as on time —
+--                  deleting a late train is not running it punctually.
+--     2 = NO_DATA  the operator has no prediction for this call. The train is
+--                  still expected. This is NOT a cancellation, and reading it
+--                  as one (the easy mistake, since 2 means UNSCHEDULED at trip
+--                  level) overstates cancellations by orders of magnitude and
+--                  silently shrinks the denominator.
+--   Both are reported in their own columns so neither can hide inside the
+--   on-time rate. Hubs with no scored departures are excluded rather than
+--   shown as 100 %.
 SELECT
     RANK() OVER (
         ORDER BY 1.0 * SUM(COALESCE(is_on_time, 0))
@@ -237,12 +250,14 @@ SELECT
         DESC
     ) AS punctuality_rank,
     station_name,
-    SUM(CASE WHEN is_on_time IS NOT NULL THEN 1 ELSE 0 END) AS observed_departures,
+    SUM(CASE WHEN is_on_time IS NOT NULL THEN 1 ELSE 0 END) AS scored_departures,
     SUM(COALESCE(is_on_time, 0)) AS on_time_departures,
     ROUND(100.0 * SUM(COALESCE(is_on_time, 0))
           / NULLIF(SUM(CASE WHEN is_on_time IS NOT NULL THEN 1 ELSE 0 END), 0), 1)
         AS on_time_pct,
-    SUM(is_skipped) AS cancelled_calls,
+    SUM(is_skipped)   AS cancelled_calls,
+    SUM(has_no_data)  AS calls_without_prediction,
+    COUNT(*)          AS calls_observed_total,
     ROUND(AVG(CASE WHEN is_skipped = 0 THEN departure_delay_s END), 0)
         AS avg_delay_seconds,
     MAX(departure_delay_s) AS worst_delay_seconds
@@ -268,7 +283,8 @@ SELECT
         AS on_time_pct,
     ROUND(AVG(CASE WHEN is_skipped = 0 THEN departure_delay_s END), 0)
         AS avg_delay_seconds,
-    SUM(is_skipped) AS cancelled_calls
+    SUM(is_skipped)  AS cancelled_calls,
+    SUM(has_no_data) AS calls_without_prediction
 FROM v_rt_departure_performance
 WHERE station_name IS NOT NULL
 GROUP BY station_name
@@ -283,6 +299,11 @@ LIMIT 25;
 --   95 % of trains are punctual and 5 % are an hour late has the same mean as
 --   one where every train is three minutes late, and they are completely
 --   different railways to travel on.
+--
+--   Cancelled (SKIPPED) calls are excluded — they have no delay to band. Calls
+--   the operator has issued no prediction for (NO_DATA) are NOT excluded; they
+--   land in '(no reading)', which is exactly what they are. Dropping them
+--   silently would make the coverage of this table look better than it is.
 SELECT
     CASE
         WHEN departure_delay_s IS NULL      THEN '(no reading)'

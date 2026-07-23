@@ -1,0 +1,10 @@
+definition,frequency_class,services,pct_of_services
+A. modal days per active week (used),High Frequency,23340,45.24
+A. modal days per active week (used),Medium Frequency,17877,34.65
+A. modal days per active week (used),Low Frequency/Special,10376,20.11
+B. distinct weekdays ever touched,High Frequency,32124,62.26
+B. distinct weekdays ever touched,Medium Frequency,16262,31.52
+B. distinct weekdays ever touched,Low Frequency/Special,3207,6.22
+C. busiest single week,High Frequency,26880,52.1
+C. busiest single week,Medium Frequency,18769,36.38
+C. busiest single week,Low Frequency/Special,5944,11.52
