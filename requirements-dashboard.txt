@@ -1,0 +1,17 @@
+# Optional extras for the Streamlit report layer and the portal automation.
+#   pip install -r requirements.txt -r requirements-dashboard.txt
+#
+# NOTE ON THE `pandas` CONSTRAINT
+# The challenge forbids pandas for filtering/aggregating and explicitly allows
+# it "as a way to visualize the data". Every number shown in the dashboard is
+# produced by a file in sql/analysis/; pandas only wraps the already-aggregated
+# rows so Streamlit/Altair can draw them. The ETL pipeline never imports it.
+-r requirements.txt
+
+streamlit>=1.36,<2
+pandas>=2.2,<3
+altair>=5.3,<6
+
+# Drives the Belgian Mobility developer portal in a headless browser to create
+# the API subscription (scripts/setup_api_key.py).
+playwright>=1.44,<2

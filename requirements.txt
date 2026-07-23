@@ -1,0 +1,19 @@
+# ---------------------------------------------------------------------------
+# RailPulse — Sprint 1 dependencies
+#
+# The ETL pipeline deliberately depends on almost nothing: the challenge forbids
+# data-frame engines, so ingestion is `requests` + the standard library
+# (`csv`, `zipfile`, `json`, `sqlite3`) and every transformation is raw SQL.
+# ---------------------------------------------------------------------------
+
+# --- pipeline (required) ---------------------------------------------------
+requests>=2.31,<3          # the only network layer used by the ingestion jobs
+python-dotenv>=1.0,<2      # loads .env so the API key never reaches the source
+
+# --- dashboard (optional: `pip install -r requirements-dashboard.txt`) ------
+# streamlit>=1.36
+# pandas>=2.2               # rendering ONLY — never used to filter or aggregate
+# altair>=5.3
+
+# --- developer-portal automation (optional) --------------------------------
+# playwright>=1.44          # then: python -m playwright install chromium
