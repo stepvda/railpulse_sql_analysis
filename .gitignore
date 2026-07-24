@@ -14,6 +14,15 @@ data/*.db-shm
 *.sqlite
 *.sqlite3
 
+# data/db_parts/ IS committed, deliberately — the same 1 GB database as a 95 MB
+# zip cut into 25 MB pieces (`make db-restore` puts it back). The patterns above
+# do not reach it: `data/*.db` matches only direct children of data/ ending in
+# .db, and a part is named railpulse.db.zip.000. These negations are belt and
+# braces, so that adding a broader rule later cannot silently drop the parts and
+# leave `make db-restore` pointing at nothing.
+!data/db_parts/
+!data/db_parts/**
+
 # output/*.csv IS committed, deliberately. It is 188 KB for all 47 files, it
 # makes the repository a self-contained answer to the challenge, and
 # docs/analysis_report.md links directly into it — ignoring it would leave

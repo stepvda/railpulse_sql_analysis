@@ -27,7 +27,7 @@ SQL_FILES     := $(SCHEMA_SQL) $(ANALYSIS_SQL)
 .DEFAULT_GOAL := help
 .PHONY: help setup setup-dashboard setup-chat setup-dev all fetch build rebuild verify analyse poll benchmark \
         dashboard info clean clean-db clean-output test lint sqlfmt-check \
-        api-key
+        api-key db-split db-restore db-verify-parts
 
 # ---------------------------------------------------------------------------
 help:  ## show this help
@@ -96,6 +96,19 @@ dashboard: $(DB)  ## launch the Streamlit report
 
 api-key:  ## create the developer-portal subscription and print the key
 	$(PYTHON) scripts/setup_api_key.py
+
+# ---------------------------------------------------------------------------
+# The 1 GB database does not go into git, but a 95 MB zip cut into 25 MB pieces
+# does — see data/db_parts/README.md for why that is offered at all when
+# `make build` reproduces the same file from the feed.
+db-restore:  ## rebuild data/railpulse.db from the committed 25 MB parts (no feed needed)
+	./scripts/db_parts.sh restore
+
+db-verify-parts:  ## checksum the committed parts without unpacking them
+	./scripts/db_parts.sh verify
+
+db-split: $(DB)  ## re-cut data/db_parts/* after rebuilding the database
+	./scripts/db_parts.sh split
 
 # ---------------------------------------------------------------------------
 test:  ## run the test suite

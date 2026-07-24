@@ -409,6 +409,17 @@ make all                                # fetch → build → verify → analyse
 | Peak disk during build | **~1.5 GB** (staging is dropped and the file is compacted at the end) |
 | Python                 | **3.10+**                                                             |
 
+**No feed, no API key, no three minutes?** The same database is committed as a
+95 MB zip in 25 MB pieces:
+
+```bash
+make db-restore                         # data/db_parts/* → data/railpulse.db
+```
+
+It is checksum-verified on the way out, and it is the exact snapshot this report
+was written against rather than today's feed —
+[`data/db_parts/README.md`](data/db_parts/README.md).
+
 `make setup` runs `pip install -e .`, which is what makes the bare `railpulse`
 command work. The package lives in `src/`, so without installing it
 `python -m railpulse` fails with *No module named railpulse* — every command
@@ -444,6 +455,7 @@ endpoint list, quota arithmetic and licence terms:
 | `make benchmark` | Measure index and SARGability effects                                  |
 | `make info`      | What is loaded, from when, how clean                                   |
 | `make test`      | 149 tests, under a second                                              |
+| `make db-restore` | Rebuild the database from`data/db_parts/*` instead of the feed       |
 
 ---
 
